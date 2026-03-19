@@ -1,6 +1,7 @@
 import { technologies } from '../data/technologies';
 import { buildings } from '../data/buildings';
 import { aiNations } from '../data/nations';
+import { eventDefinitions } from '../data/events';
 
 export class GameState {
   constructor() {
@@ -347,7 +348,6 @@ export class GameState {
   }
 
   triggerRandomEvent() {
-    const { eventDefinitions } = require('../data/events');
     const validEvents = eventDefinitions.filter(e => e.condition(this));
 
     if (validEvents.length === 0) return;
