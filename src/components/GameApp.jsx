@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState } from '../engine/GameState';
 import TopBar from './TopBar';
 import FarmPanel from './FarmPanel';
@@ -6,7 +6,7 @@ import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
-import { Wheat, Package, User, Coffee } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play } from 'lucide-react';
 
 const TABS = [
   { id: 'farm', label: '农田', icon: Wheat },
@@ -14,41 +14,62 @@ const TABS = [
   { id: 'character', label: '角色', icon: User },
 ];
 
+const TICK_INTERVAL = 2000; // 2秒一个tick
+
 export default function GameApp() {
   const [game] = useState(() => new GameState('旅人'));
-  const [, setVersion] = useState(0); // 用于强制刷新
+  const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const timerRef = useRef(null);
 
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
+
+  // 定时器驱动时间流逝
+  useEffect(() => {
+    if (paused) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      return;
+    }
+
+    timerRef.current = setInterval(() => {
+      game.tick();
+
+      // 如果有通知，暂停并弹出
+      if (game.notifications.length > 0) {
+        setShowNotifications(true);
+        setPaused(true);
+      }
+
+      setVersion(v => v + 1);
+    }, TICK_INTERVAL);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [game, paused]);
 
   const handleAction = useCallback((action, params = {}) => {
     game.doAction(action, params);
     forceUpdate();
   }, [game, forceUpdate]);
 
-  const handleNextTurn = useCallback(() => {
-    game.nextTurn();
-    if (game.notifications.length > 0) {
-      setShowNotifications(true);
-    }
-    forceUpdate();
-  }, [game, forceUpdate]);
-
   const handleDismissNotifications = useCallback(() => {
     game.clearNotifications();
     setShowNotifications(false);
+    setPaused(false);
     forceUpdate();
   }, [game, forceUpdate]);
 
-  const handleRest = useCallback(() => {
-    handleAction('rest');
-  }, [handleAction]);
+  const togglePause = useCallback(() => {
+    setPaused(p => !p);
+  }, []);
 
   return (
     <div className="w-full h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden">
-      {/* 顶栏 */}
-      <TopBar game={game} onNextTurn={handleNextTurn} />
+      <TopBar game={game} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧导航 */}
@@ -73,14 +94,18 @@ export default function GameApp() {
 
           <div className="flex-1" />
 
-          {/* 休息按钮 */}
+          {/* 暂停/继续按钮 */}
           <button
-            onClick={handleRest}
-            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
-            title="休息恢复体力"
+            onClick={togglePause}
+            className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
+              paused
+                ? 'text-amber-400 hover:bg-stone-800'
+                : 'text-stone-500 hover:bg-stone-800 hover:text-stone-300'
+            }`}
+            title={paused ? '继续' : '暂停'}
           >
-            <Coffee size={18} />
-            休息
+            {paused ? <Play size={18} /> : <Pause size={18} />}
+            {paused ? '继续' : '暂停'}
           </button>
         </div>
 

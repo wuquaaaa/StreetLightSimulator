@@ -1,5 +1,6 @@
 /**
  * 游戏主状态 - 路灯计划
+ * 时间自动流逝（定时器驱动），无体力系统
  */
 
 import { Character } from './Character';
@@ -8,111 +9,103 @@ import { WarehouseSystem } from './WarehouseSystem';
 
 export class GameState {
   constructor(playerName = '旅人') {
-    // 回合
-    this.turn = 1;
-    this.season = '春'; // 春夏秋冬
     this.day = 1;
+    this.tickCount = 0;
+    this.season = '春';
 
-    // 玩家角色
-    this.player = new Character({
-      name: playerName,
-      role: 'farmer',
-      isPlayer: true,
-    });
-
-    // 系统
+    this.player = new Character({ name: playerName, role: 'farmer', isPlayer: true });
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
 
-    // 游戏日志
-    this.log = ['你来到了一片陌生的土地。这里有几块空闲的农田和一间简陋的食物仓库。'];
-    this.log.push('作为一名农民，你需要耕种农田来维持生计。');
+    // 初始物资
+    this.warehouse.addItem('food', 'wheat', '小麦', 20);
+    this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
-    // 通知队列（UI弹出用）
+    this.log = [
+      '你来到了一片陌生的土地。',
+      '这里有几块空闲的农田和一间简陋的仓库。',
+      '仓库里有一些小麦和小麦种子，够你起步了。',
+    ];
     this.notifications = [];
   }
 
-  // 下一回合
-  nextTurn() {
-    this.turn++;
-    this.day++;
+  // 每个tick由定时器调用（约2秒一次）
+  tick() {
+    this.tickCount++;
 
-    // 每7天换季
-    const seasonIndex = Math.floor((this.day - 1) / 7) % 4;
-    const seasons = ['春', '夏', '秋', '冬'];
-    const newSeason = seasons[seasonIndex];
-    if (newSeason !== this.season) {
-      this.season = newSeason;
-      this.addLog(`季节变化：进入了${this.season}季`);
-    }
+    // 每10个tick算一天
+    if (this.tickCount % 10 === 0) {
+      this.day++;
+      const seasonIndex = Math.floor((this.day - 1) / 7) % 4;
+      const seasons = ['春', '夏', '秋', '冬'];
+      const newSeason = seasons[seasonIndex];
+      if (newSeason !== this.season) {
+        this.season = newSeason;
+        this.addLog(`季节变化：进入了${this.season}季`);
+      }
 
-    // 恢复体力
-    this.player.restoreStamina(30);
-
-    // 更新农田
-    this.farm.updatePlots();
-
-    // 检查是否有作物成熟
-    for (const plot of this.farm.plots) {
-      if (plot.state === 'ready') {
-        const crop = plot.getCropDef();
-        if (crop) {
-          this.addNotification(`${crop.name}已经成熟，可以收获了！`);
-        }
+      // 每天消耗食物
+      const wheatAmount = this.warehouse.getItemAmount('food', 'wheat');
+      if (wheatAmount >= 2) {
+        this.warehouse.removeItem('food', 'wheat', 2);
+      } else {
+        this.addLog('食物不足！你正在挨饿...');
+        this.addNotification('警告：食物不足！');
       }
     }
 
-    // 冬天作物可能受冻
-    if (this.season === '冬') {
+    // 农田tick
+    const farmEvents = this.farm.tick();
+    for (const evt of farmEvents) {
+      if (evt.type === 'ready') {
+        this.addLog(`${evt.cropName}已成熟，可以收获了！`);
+        this.addNotification(`${evt.cropName}已成熟！`);
+      } else if (evt.type === 'withered') {
+        this.addLog('一块农田的作物因缺水枯萎了...');
+      } else if (evt.type === 'pest') {
+        this.addLog(`病虫害出现了！需要点击${evt.severity}次来清除`);
+        this.addNotification('病虫害出现了！');
+      }
+    }
+
+    // 冬天额外冻害
+    if (this.season === '冬' && this.tickCount % 10 === 0) {
       for (const plot of this.farm.plots) {
-        if (plot.state === 'growing' && Math.random() < 0.15) {
+        if (plot.state === 'growing' && Math.random() < 0.1) {
           plot.state = 'withered';
-          this.addLog('寒冬使一块农田的作物冻死了');
+          this.addLog('严寒使一块作物冻死了');
         }
       }
     }
-
-    // 每天消耗食物
-    const foodNeeded = 2;
-    const wheatAmount = this.warehouse.getItemAmount('food', 'wheat');
-    if (wheatAmount >= foodNeeded) {
-      this.warehouse.removeItem('food', 'wheat', foodNeeded);
-      this.addLog(`消耗了${foodNeeded}单位小麦作为口粮`);
-    } else {
-      // 饥饿，体力恢复减少
-      this.player.stamina = Math.max(0, this.player.stamina - 20);
-      this.addLog('没有足够的食物！你感到饥饿，体力大幅下降。');
-      this.addNotification('警告：食物不足，你正在挨饿！');
-    }
-
-    this.addLog(`第${this.turn}天（${this.season}季）`);
   }
 
-  // 执行耕种动作
   doAction(action, params = {}) {
     let result;
-
     switch (action) {
       case 'plow':
         result = this.farm.plow(params.plotId, this.player);
         break;
       case 'plant':
-        result = this.farm.plant(params.plotId, params.cropId, this.player);
+        result = this.farm.plant(params.plotId, params.cropId, this.player, this.warehouse);
         break;
       case 'water':
         result = this.farm.water(params.plotId, this.player);
         break;
+      case 'remove_pest':
+        result = this.farm.removePest(params.plotId, this.player);
+        break;
       case 'harvest':
         result = this.farm.harvest(params.plotId, this.player);
         if (result.success && result.yield) {
-          // 收获物存入仓库
           const storeResult = this.warehouse.addItem(
-            result.yield.category,
-            result.yield.itemId,
-            result.yield.name,
-            result.yield.amount
+            result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
           );
-          this.addLog(storeResult.message);
+          if (storeResult.overflow > 0) {
+            this.addLog(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
+          }
+          if (result.seedBack) {
+            this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
+          }
         }
         break;
       case 'expand_farm':
@@ -121,30 +114,20 @@ export class GameState {
       case 'build_warehouse':
         result = this.warehouse.buildWarehouse(params.category);
         break;
-      case 'rest':
-        this.player.restoreStamina(20);
-        result = { success: true, message: '你休息了一会，恢复了一些体力' };
-        break;
       default:
         result = { success: false, message: '未知操作' };
     }
-
-    if (result.message) {
-      this.addLog(result.message);
-    }
-
+    if (result && result.message) this.addLog(result.message);
     return result;
   }
 
-  addLog(message) {
-    this.log.push(message);
-    if (this.log.length > 100) {
-      this.log.shift();
-    }
+  addLog(msg) {
+    this.log.push(msg);
+    if (this.log.length > 100) this.log.shift();
   }
 
-  addNotification(message) {
-    this.notifications.push(message);
+  addNotification(msg) {
+    this.notifications.push(msg);
   }
 
   clearNotifications() {

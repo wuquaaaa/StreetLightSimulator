@@ -43,31 +43,6 @@ export default function CharacterPanel({ game }) {
                 {player.role === 'farmer' ? '农民' : player.role}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-stone-400">体力</span>
-              <span className="text-stone-200">{Math.floor(player.stamina)} / {player.maxStamina}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 体力详情 */}
-        <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
-          <h3 className="text-sm text-stone-400 mb-3 border-b border-stone-700 pb-2">体力状态</h3>
-          <div className="mb-3">
-            <div className="w-full h-3 bg-stone-700 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${(player.stamina / player.maxStamina) * 100}%`,
-                  backgroundColor: player.stamina > 50 ? '#22c55e' : player.stamina > 20 ? '#f59e0b' : '#ef4444',
-                }}
-              />
-            </div>
-          </div>
-          <div className="text-xs text-stone-500 space-y-1">
-            <p>每天自动恢复 30 点体力</p>
-            <p>可通过休息额外恢复 20 点</p>
-            <p>食物不足时体力会额外下降</p>
           </div>
         </div>
 

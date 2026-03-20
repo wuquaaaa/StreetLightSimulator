@@ -55,11 +55,6 @@ export class Character {
 
     // ======== 属性可见性（前期全部隐藏） ========
     this.attributesRevealed = false;
-
-    // ======== 体力 ========
-    this.stamina = 100;
-    this.maxStamina = 100;
-    this.status = 'idle';
   }
 
   // ======== 产出计算：基础属性 × 知识属性 联合影响 ========
@@ -161,15 +156,4 @@ export class Character {
     this.attributesRevealed = true;
   }
 
-  // ======== 体力系统 ========
-
-  useStamina(amount) {
-    if (this.stamina < amount) return false;
-    this.stamina = Math.max(0, this.stamina - amount);
-    return true;
-  }
-
-  restoreStamina(amount = 30) {
-    this.stamina = Math.min(this.maxStamina, this.stamina + amount);
-  }
 }
