@@ -126,6 +126,12 @@ export class GameState {
       case 'remove_weeds':
         result = this.farm.removeWeeds(params.plotId, this.player);
         break;
+      case 'fertilize':
+        result = this.farm.fertilize(params.plotId, this.player);
+        break;
+      case 'rename_plot':
+        result = this.farm.renamePlot(params.plotId, params.newName);
+        break;
       case 'harvest':
         result = this.farm.harvest(params.plotId, this.player);
         if (result.success && result.yield) {
