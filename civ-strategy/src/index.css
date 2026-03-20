@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+* {
+  @apply box-border;
+}
+
+html, body, #root {
+  @apply h-full w-full m-0 p-0;
+}
+
+body {
+  @apply bg-stone-950 text-stone-100;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  @apply flex flex-col;
+}
