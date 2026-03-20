@@ -3,7 +3,7 @@
  *
  * 核心机制：
  * - 小麦10天（100 tick）长成
- * - 肥力基准60：<60减产，>60增产
+ * - 肥力基准60：<60每天减产（0肥减更多），>60每天增产（60→100加速增产）
  * - 水分<60：每天永久降低本次作物产量
  * - 杂草>40：每天永久降低本次作物产量
  * - 杂草生长值0-100，满100后保持100，点击除草减20（与浇水相同逻辑）
@@ -43,8 +43,8 @@ export class FarmPlot {
     // 杂草：生长值 0-100，满后保持100
     this.weedGrowth = 0;
 
-    // 分配给哪个角色管理（角色id）
-    this.assignedTo = null;
+    // 分配给哪些角色管理（角色id数组，支持多人）
+    this.assignedTo = [];
   }
 
   getCropDef() {
@@ -82,6 +82,10 @@ export class FarmPlot {
   static fromJSON(data) {
     const plot = new FarmPlot(data.id, 0);
     Object.assign(plot, data);
+    // 兼容旧存档：assignedTo 可能是 string/null
+    if (!Array.isArray(plot.assignedTo)) {
+      plot.assignedTo = plot.assignedTo ? [plot.assignedTo] : [];
+    }
     return plot;
   }
 }
@@ -100,20 +104,31 @@ export class FarmSystem {
   assignPlot(plotId, characterId) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    plot.assignedTo = characterId;
+    // 兼容：确保 assignedTo 是数组
+    if (!Array.isArray(plot.assignedTo)) plot.assignedTo = plot.assignedTo ? [plot.assignedTo] : [];
+    if (plot.assignedTo.includes(characterId)) return { success: false, message: '已分配过' };
+    plot.assignedTo.push(characterId);
     return { success: true, message: '已分配' };
   }
 
-  unassignPlot(plotId) {
+  unassignPlot(plotId, characterId) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    plot.assignedTo = null;
+    if (!Array.isArray(plot.assignedTo)) plot.assignedTo = plot.assignedTo ? [plot.assignedTo] : [];
+    if (characterId) {
+      plot.assignedTo = plot.assignedTo.filter(id => id !== characterId);
+    } else {
+      plot.assignedTo = [];
+    }
     return { success: true, message: '已取消分配' };
   }
 
   // 获取某角色负责的农田
   getPlotsForCharacter(characterId) {
-    return this.plots.filter(p => p.assignedTo === characterId);
+    return this.plots.filter(p => {
+      if (Array.isArray(p.assignedTo)) return p.assignedTo.includes(characterId);
+      return p.assignedTo === characterId; // 兼容旧存档
+    });
   }
 
   renamePlot(plotId, newName) {
@@ -254,7 +269,7 @@ export class FarmSystem {
   }
 
   // ====== 每tick自动更新 ======
-  tick() {
+  tick(isNewDay = false) {
     const events = [];
 
     for (let i = 0; i < this.plots.length; i++) {
@@ -354,6 +369,26 @@ export class FarmSystem {
           neighbor.pestSeverity = 3 + Math.floor(Math.random() * 3); // 传染较轻 3-5次
           neighbor.cropYieldMod = Math.max(0.1, neighbor.cropYieldMod - 0.05);
           events.push({ type: 'pest_spread', plotId: neighbor.id, fromPlotId: plot.id });
+        }
+      }
+    }
+
+    // === 每日肥力产量修正 ===
+    if (isNewDay) {
+      for (const plot of this.plots) {
+        if (plot.state !== FIELD_STATE.GROWING && plot.state !== FIELD_STATE.READY) continue;
+        if (plot.fertility > 60) {
+          // 肥力60→100：每天增产，增量随肥力加速
+          // 60时增0，100时增0.02/天，中间二次曲线加速
+          const ratio = (plot.fertility - 60) / 40; // 0~1
+          const dailyBonus = 0.02 * ratio * ratio; // 加速增长
+          plot.cropYieldMod = Math.min(2.0, plot.cropYieldMod + dailyBonus);
+        } else if (plot.fertility < 60) {
+          // 肥力<60：每天减产，0肥力减更多
+          // 60时减0，0时减0.03/天
+          const ratio = (60 - plot.fertility) / 60; // 0~1
+          const dailyPenalty = 0.03 * ratio;
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - dailyPenalty);
         }
       }
     }

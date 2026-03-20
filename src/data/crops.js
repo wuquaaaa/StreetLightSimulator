@@ -13,7 +13,7 @@ export const CROPS = [
     seedName: '小麦种子',
     seedCost: 1,
     growthTime: 3,
-    baseYield: 8,
+    baseYield: 16,
     season: ['春', '夏', '秋'],
     icon: '🌾',
   },

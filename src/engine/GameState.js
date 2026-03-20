@@ -93,8 +93,9 @@ export class GameState {
       }
     }
 
-    // 农田tick
-    const farmEvents = this.farm.tick();
+    // 农田tick（传入是否新的一天）
+    const isNewDay = this.tickCount % 10 === 0;
+    const farmEvents = this.farm.tick(isNewDay);
     for (const evt of farmEvents) {
       if (evt.type === 'ready') {
         this.addLog(`${evt.cropName}已成熟，可以收获了！`);
@@ -215,7 +216,7 @@ export class GameState {
         result = this.farm.assignPlot(params.plotId, params.characterId);
         break;
       case 'unassign_plot':
-        result = this.farm.unassignPlot(params.plotId);
+        result = this.farm.unassignPlot(params.plotId, params.characterId);
         break;
       case 'set_target_plots':
         if (typeof params.count === 'number' && params.count >= this.farm.plots.length) {
