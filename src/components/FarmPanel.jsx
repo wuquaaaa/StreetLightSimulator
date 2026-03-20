@@ -229,6 +229,23 @@ export default function FarmPanel({ game, onAction }) {
         {game.farm.plots.map(plot => (
           <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} />
         ))}
+        {/* 开垦中的新农田 */}
+        {game.farm.expandQueue.map((q, i) => {
+          const pct = Math.floor(((50 - q.ticksRemaining) / 50) * 100);
+          const allChars = [game.player, ...(game.characters || [])];
+          const char = allChars.find(c => c.id === q.characterId);
+          return (
+            <div key={`expand_${i}`} className="rounded-lg border-2 border-dashed border-stone-600 p-3 bg-stone-800/30 h-64 flex flex-col items-center justify-center">
+              <span className="text-2xl mb-2">⛏</span>
+              <span className="text-sm text-stone-400 mb-2">开垦中...</span>
+              <div className="w-32 h-2 bg-stone-700 rounded-full overflow-hidden mb-1">
+                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-xs text-blue-400 font-bold">{pct}%</span>
+              {char && <span className="text-xs text-stone-500 mt-1">{char.name}</span>}
+            </div>
+          );
+        })}
       </div>
       {plantingPlotId && (
         <SeedSelectPopup warehouse={game.warehouse} onSelect={handleSeedSelect} onClose={() => setPlantingPlotId(null)} />
