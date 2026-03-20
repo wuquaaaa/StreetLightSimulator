@@ -1,151 +1,204 @@
 /**
  * 仓库系统 - 路灯计划
- * 分类存储，容量限制，建设扩容
+ * 公共仓库：初始可用，可存所有种类物品
+ * 专用仓库：随游戏进度解锁，解锁前不展示
  */
 
-// 仓库分类
+// 专用仓库分类（按进度解锁）
 export const WAREHOUSE_CATEGORIES = {
-  food: { name: '食物', icon: '🍞', color: '#f59e0b' },
-  mineral: { name: '矿物', icon: '⛏️', color: '#6b7280' },
-  material: { name: '材料', icon: '🪵', color: '#92400e' },
-  tool: { name: '工具', icon: '🔧', color: '#3b82f6' },
-  seed: { name: '种子', icon: '🌱', color: '#22c55e' },
+  food: { name: '食物', icon: '🍞', color: '#f59e0b', unlockDay: 15 },
+  mineral: { name: '矿物', icon: '⛏️', color: '#6b7280', unlockDay: 30 },
+  material: { name: '材料', icon: '🪵', color: '#92400e', unlockDay: 25 },
+  tool: { name: '工具', icon: '🔧', color: '#3b82f6', unlockDay: 40 },
+  seed: { name: '种子', icon: '🌱', color: '#22c55e', unlockDay: 20 },
 };
 
 export class WarehouseSystem {
   constructor() {
-    // 每个分类的容量和当前存储
+    // ======== 公共仓库（初始可用，可存所有种类） ========
+    this.common = {
+      items: {},      // { itemId: { name, amount, category } }
+      capacity: 300,
+      level: 1,
+    };
+
+    // ======== 专用仓库（按进度解锁） ========
     this.storage = {};
     for (const catKey of Object.keys(WAREHOUSE_CATEGORIES)) {
       this.storage[catKey] = {
-        items: {},    // { itemId: { name, amount } }
-        capacity: 100, // 初始容量
-        level: 0,     // 仓库等级（0=未建设）
+        items: {},
+        capacity: 200,
+        level: 0, // 0=未解锁
+        unlocked: false,
       };
     }
-
-    // 初始只有食物仓库（等级1）
-    this.storage.food.level = 1;
-    this.storage.food.capacity = 200;
-
-    // 给一点初始小麦种子
-    this.addItem('seed', 'wheat_seed', '小麦种子', 5);
   }
 
-  // 获取某分类的总存储量
-  getCategoryUsed(category) {
-    const cat = this.storage[category];
-    if (!cat) return 0;
-    return Object.values(cat.items).reduce((sum, item) => sum + item.amount, 0);
+  // ======== 公共仓库操作 ========
+
+  getCommonUsed() {
+    return Object.values(this.common.items).reduce((sum, item) => sum + item.amount, 0);
   }
 
-  // 获取某分类的剩余空间
-  getCategoryRemaining(category) {
-    const cat = this.storage[category];
-    if (!cat) return 0;
-    return cat.capacity - this.getCategoryUsed(category);
+  getCommonRemaining() {
+    return this.common.capacity - this.getCommonUsed();
   }
 
-  // 添加物品
+  // ======== 添加物品（优先存专用仓库，未解锁则存公共仓库） ========
   addItem(category, itemId, name, amount) {
-    const cat = this.storage[category];
-    if (!cat) return { success: false, message: '未知仓库分类' };
+    const specialized = this.storage[category];
 
-    // 检查仓库是否已建设（等级>0）或是食物仓库（初始可用）
-    if (cat.level <= 0) {
-      return { success: false, message: `${WAREHOUSE_CATEGORIES[category].name}仓库尚未建设` };
+    // 如果专用仓库已解锁，优先存入专用仓库
+    if (specialized && specialized.unlocked && specialized.level > 0) {
+      const specUsed = Object.values(specialized.items).reduce((s, i) => s + i.amount, 0);
+      const specRemaining = specialized.capacity - specUsed;
+      const specAmount = Math.min(amount, specRemaining);
+
+      if (specAmount > 0) {
+        if (specialized.items[itemId]) {
+          specialized.items[itemId].amount += specAmount;
+        } else {
+          specialized.items[itemId] = { name, amount: specAmount };
+        }
+        amount -= specAmount;
+      }
     }
 
-    const remaining = this.getCategoryRemaining(category);
-    const actualAmount = Math.min(amount, remaining);
+    // 剩余存入公共仓库
+    if (amount > 0) {
+      const commonRemaining = this.getCommonRemaining();
+      const commonAmount = Math.min(amount, commonRemaining);
 
-    if (actualAmount <= 0) {
-      return { success: false, message: '仓库已满！' };
+      if (commonAmount > 0) {
+        if (this.common.items[itemId]) {
+          this.common.items[itemId].amount += commonAmount;
+        } else {
+          this.common.items[itemId] = { name, amount: commonAmount, category };
+        }
+        amount -= commonAmount;
+      }
     }
 
-    if (cat.items[itemId]) {
-      cat.items[itemId].amount += actualAmount;
-    } else {
-      cat.items[itemId] = { name, amount: actualAmount };
-    }
-
-    const overflow = amount - actualAmount;
+    const overflow = amount;
     return {
-      success: true,
-      stored: actualAmount,
+      success: overflow === 0,
       overflow,
-      message: overflow > 0
-        ? `存入${actualAmount}，${overflow}因仓库满而丢失`
-        : `存入${actualAmount}${name}`,
+      message: overflow > 0 ? `仓库空间不足，${overflow}单位${name}丢失` : `已存入${name}`,
     };
   }
 
-  // 移除物品
+  // ======== 移除物品（先从专用仓库取，不够再从公共仓库取） ========
   removeItem(category, itemId, amount) {
-    const cat = this.storage[category];
-    if (!cat) return { success: false, message: '未知仓库分类' };
+    let remaining = amount;
 
-    const item = cat.items[itemId];
-    if (!item || item.amount < amount) {
+    // 先从专用仓库取
+    const specialized = this.storage[category];
+    if (specialized && specialized.items[itemId]) {
+      const take = Math.min(remaining, specialized.items[itemId].amount);
+      specialized.items[itemId].amount -= take;
+      if (specialized.items[itemId].amount <= 0) delete specialized.items[itemId];
+      remaining -= take;
+    }
+
+    // 再从公共仓库取
+    if (remaining > 0 && this.common.items[itemId]) {
+      const take = Math.min(remaining, this.common.items[itemId].amount);
+      this.common.items[itemId].amount -= take;
+      if (this.common.items[itemId].amount <= 0) delete this.common.items[itemId];
+      remaining -= take;
+    }
+
+    if (remaining > 0) {
       return { success: false, message: '物品不足' };
     }
-
-    item.amount -= amount;
-    if (item.amount <= 0) {
-      delete cat.items[itemId];
-    }
-
-    return { success: true, message: `取出${amount}${item ? item.name : ''}` };
+    return { success: true, message: `取出${amount}` };
   }
 
-  // 查询物品数量
+  // ======== 查询物品总数量（专用+公共） ========
   getItemAmount(category, itemId) {
-    const cat = this.storage[category];
-    if (!cat || !cat.items[itemId]) return 0;
-    return cat.items[itemId].amount;
+    let total = 0;
+    const specialized = this.storage[category];
+    if (specialized && specialized.items[itemId]) {
+      total += specialized.items[itemId].amount;
+    }
+    if (this.common.items[itemId]) {
+      total += this.common.items[itemId].amount;
+    }
+    return total;
   }
 
-  // 建设/升级仓库
-  buildWarehouse(category) {
+  // ======== 解锁专用仓库 ========
+  unlockWarehouse(category) {
     const cat = this.storage[category];
-    if (!cat) return { success: false, message: '未知分类' };
+    if (!cat || cat.unlocked) return false;
+    cat.unlocked = true;
+    cat.level = 1;
+    return true;
+  }
 
-    const nextLevel = cat.level + 1;
-    const cost = this.getUpgradeCost(nextLevel);
+  // ======== 升级仓库 ========
+  upgradeWarehouse(category) {
+    const cat = this.storage[category];
+    if (!cat || !cat.unlocked) return { success: false, message: '仓库未解锁' };
 
-    cat.level = nextLevel;
-    cat.capacity = nextLevel * 200;
-
+    cat.level++;
+    cat.capacity = cat.level * 200;
     return {
       success: true,
-      message: `${WAREHOUSE_CATEGORIES[category].name}仓库升级到${nextLevel}级，容量${cat.capacity}`,
-      cost,
+      message: `${WAREHOUSE_CATEGORIES[category].name}仓库升级到${cat.level}级，容量${cat.capacity}`,
     };
   }
 
-  // 获取升级费用
-  getUpgradeCost(level) {
+  upgradeCommon() {
+    this.common.level++;
+    this.common.capacity = this.common.level * 300;
     return {
-      // 升级需要的资源（后续可扩展）
-      labor: level * 20,     // 劳动力（体力）
-      material: level * 10,  // 材料
+      success: true,
+      message: `公共仓库升级到${this.common.level}级，容量${this.common.capacity}`,
     };
   }
 
-  // 获取所有分类的摘要
+  // ======== 根据天数检查并解锁仓库 ========
+  checkUnlocks(day) {
+    const newUnlocks = [];
+    for (const [catKey, catDef] of Object.entries(WAREHOUSE_CATEGORIES)) {
+      if (!this.storage[catKey].unlocked && day >= catDef.unlockDay) {
+        this.unlockWarehouse(catKey);
+        newUnlocks.push(catDef.name);
+      }
+    }
+    return newUnlocks;
+  }
+
+  // ======== 获取摘要（只返回已解锁的专用仓库） ========
   getSummary() {
-    const summary = {};
+    const summary = { common: null, specialized: {} };
+
+    // 公共仓库
+    summary.common = {
+      name: '公共仓库',
+      icon: '📦',
+      level: this.common.level,
+      capacity: this.common.capacity,
+      used: this.getCommonUsed(),
+      items: { ...this.common.items },
+    };
+
+    // 只返回已解锁的专用仓库
     for (const [catKey, catDef] of Object.entries(WAREHOUSE_CATEGORIES)) {
       const cat = this.storage[catKey];
-      summary[catKey] = {
-        ...catDef,
-        level: cat.level,
-        capacity: cat.capacity,
-        used: this.getCategoryUsed(catKey),
-        items: { ...cat.items },
-        built: cat.level > 0,
-      };
+      if (cat.unlocked) {
+        const used = Object.values(cat.items).reduce((s, i) => s + i.amount, 0);
+        summary.specialized[catKey] = {
+          ...catDef,
+          level: cat.level,
+          capacity: cat.capacity,
+          used,
+          items: { ...cat.items },
+        };
+      }
     }
+
     return summary;
   }
 }

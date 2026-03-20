@@ -13,29 +13,44 @@ export class GameState {
     this.tickCount = 0;
     this.season = '春';
 
+    // 人口
+    this.population = 1; // 初始1人（玩家自己）
+    this.foodPerPerson = 2; // 每人每天消耗食物
+
     this.player = new Character({ name: playerName, role: 'farmer', isPlayer: true });
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
 
-    // 初始物资
+    // 初始物资（全部存入公共仓库）
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
     this.log = [
       '你来到了一片陌生的土地。',
-      '这里有几块空闲的农田和一间简陋的仓库。',
+      '这里有几块空闲的农田和一间公共仓库。',
       '仓库里有一些小麦和小麦种子，够你起步了。',
     ];
     this.notifications = [];
   }
 
-  // 每个tick由定时器调用（约2秒一次）
+  // tick进度（0~9），用于日月动画
+  get tickProgress() {
+    return (this.tickCount % 10) / 10;
+  }
+
+  // 每天粮食消耗
+  get dailyFoodConsumption() {
+    return this.population * this.foodPerPerson;
+  }
+
   tick() {
     this.tickCount++;
 
     // 每10个tick算一天
     if (this.tickCount % 10 === 0) {
       this.day++;
+
+      // 季节
       const seasonIndex = Math.floor((this.day - 1) / 7) % 4;
       const seasons = ['春', '夏', '秋', '冬'];
       const newSeason = seasons[seasonIndex];
@@ -44,13 +59,25 @@ export class GameState {
         this.addLog(`季节变化：进入了${this.season}季`);
       }
 
-      // 每天消耗食物
+      // 消耗食物
+      const needed = this.dailyFoodConsumption;
       const wheatAmount = this.warehouse.getItemAmount('food', 'wheat');
-      if (wheatAmount >= 2) {
-        this.warehouse.removeItem('food', 'wheat', 2);
-      } else {
-        this.addLog('食物不足！你正在挨饿...');
+      if (wheatAmount >= needed) {
+        this.warehouse.removeItem('food', 'wheat', needed);
+      } else if (wheatAmount > 0) {
+        this.warehouse.removeItem('food', 'wheat', wheatAmount);
+        this.addLog(`食物不足！只够吃${wheatAmount}单位...`);
         this.addNotification('警告：食物不足！');
+      } else {
+        this.addLog('完全没有食物了！你正在挨饿...');
+        this.addNotification('警告：食物耗尽！');
+      }
+
+      // 检查仓库解锁
+      const newUnlocks = this.warehouse.checkUnlocks(this.day);
+      for (const name of newUnlocks) {
+        this.addLog(`${name}仓库已解锁！`);
+        this.addNotification(`新仓库解锁：${name}仓库`);
       }
     }
 
@@ -68,7 +95,7 @@ export class GameState {
       }
     }
 
-    // 冬天额外冻害
+    // 冬天冻害
     if (this.season === '冬' && this.tickCount % 10 === 0) {
       for (const plot of this.farm.plots) {
         if (plot.state === 'growing' && Math.random() < 0.1) {
@@ -111,8 +138,11 @@ export class GameState {
       case 'expand_farm':
         result = this.farm.expandFarm();
         break;
-      case 'build_warehouse':
-        result = this.warehouse.buildWarehouse(params.category);
+      case 'upgrade_common':
+        result = this.warehouse.upgradeCommon();
+        break;
+      case 'upgrade_warehouse':
+        result = this.warehouse.upgradeWarehouse(params.category);
         break;
       default:
         result = { success: false, message: '未知操作' };
@@ -125,12 +155,6 @@ export class GameState {
     this.log.push(msg);
     if (this.log.length > 100) this.log.shift();
   }
-
-  addNotification(msg) {
-    this.notifications.push(msg);
-  }
-
-  clearNotifications() {
-    this.notifications = [];
-  }
+  addNotification(msg) { this.notifications.push(msg); }
+  clearNotifications() { this.notifications = []; }
 }
