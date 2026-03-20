@@ -9,16 +9,15 @@ import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
-import { Wheat, Package, User, Pause, Play, Save, Download } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save } from 'lucide-react';
 
-const TABS = [
-  { id: 'farm', label: '农田', icon: Wheat },
-  { id: 'warehouse', label: '仓库', icon: Package },
-  { id: 'character', label: '角色', icon: User },
-];
+const ROLE_TAB_MAP = {
+  farmer: { label: '农田', icon: '🌾' },
+  farmer_leader: { label: '管理', icon: '👨‍🌾' },
+};
 
 const TICK_INTERVAL = 2000;
-const AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5分钟
+const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
 
 export default function GameApp() {
   const [game, setGame] = useState(() => {
@@ -27,6 +26,7 @@ export default function GameApp() {
   });
   const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
+  const [activeRoleTab, setActiveRoleTab] = useState(null); // 当多身份时，当前激活的角色子tab
   const [showNotifications, setShowNotifications] = useState(false);
   const [paused, setPaused] = useState(false);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
@@ -50,14 +50,12 @@ export default function GameApp() {
       const g = gameRef.current;
       g.tick();
 
-      // 检查事件通知
       const eventNotifs = g.notifications.filter(n => n.startsWith('event:'));
       const normalNotifs = g.notifications.filter(n => !n.startsWith('event:'));
 
       if (eventNotifs.length > 0) {
         const eventType = eventNotifs[0].replace('event:', '');
         setActiveEvent(eventType);
-        // 移除事件通知
         g.notifications = normalNotifs;
       }
 
@@ -73,7 +71,7 @@ export default function GameApp() {
     };
   }, [game, paused]);
 
-  // 自动存档（5分钟）到栏位0
+  // 自动存档
   useEffect(() => {
     autoSaveRef.current = setInterval(() => {
       const g = gameRef.current;
@@ -121,17 +119,33 @@ export default function GameApp() {
     forceUpdate();
   }, [forceUpdate]);
 
-  // 判断是否显示农民队长视图
-  const showLeaderView = game.player.hasRole('farmer_leader') && !game.player.hasRole('farmer');
+  // 计算农田tab的角色子页签
+  const farmRoles = game.player.roles.filter(r => r === 'farmer' || r === 'farmer_leader');
+  const hasMultiFarmRoles = farmRoles.length > 1;
+  // 确定当前有效的角色子tab
+  const currentRoleTab = hasMultiFarmRoles
+    ? (activeRoleTab && farmRoles.includes(activeRoleTab) ? activeRoleTab : farmRoles[0])
+    : farmRoles[0] || 'farmer';
+
+  const renderFarmContent = () => {
+    if (currentRoleTab === 'farmer_leader') {
+      return <FarmLeaderPanel game={game} />;
+    }
+    return <FarmPanel game={game} onAction={handleAction} />;
+  };
 
   return (
     <div className="w-full h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden">
-      <TopBar game={game} />
+      <TopBar game={game} onAction={handleAction} />
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧导航 */}
         <div className="w-28 bg-stone-900 border-r border-stone-700/50 flex flex-col py-2 shrink-0">
-          {TABS.map(tab => {
+          {[
+            { id: 'farm', label: '农田', icon: Wheat },
+            { id: 'warehouse', label: '仓库', icon: Package },
+            { id: 'character', label: '角色', icon: User },
+          ].map(tab => {
             const Icon = tab.icon;
             return (
               <button
@@ -151,7 +165,6 @@ export default function GameApp() {
 
           <div className="flex-1" />
 
-          {/* 存档管理按钮 */}
           <button
             onClick={() => setShowSaveLoad(true)}
             className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
@@ -161,7 +174,6 @@ export default function GameApp() {
             存档
           </button>
 
-          {/* 暂停/继续按钮 */}
           <button
             onClick={togglePause}
             className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
@@ -178,12 +190,31 @@ export default function GameApp() {
 
         {/* 主内容区 */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 多角色子tab（仅农田页签且有多个农田相关角色时显示） */}
+          {activeTab === 'farm' && hasMultiFarmRoles && (
+            <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
+              {farmRoles.map(r => {
+                const info = ROLE_TAB_MAP[r] || { label: r, icon: '👤' };
+                const active = currentRoleTab === r;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setActiveRoleTab(r)}
+                    className={`px-4 py-2 text-sm rounded-t-lg transition-colors ${
+                      active
+                        ? 'bg-stone-800 text-amber-400 border-t border-x border-amber-700/30'
+                        : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
+                    }`}
+                  >
+                    {info.icon} {info.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-5">
-            {activeTab === 'farm' && (
-              showLeaderView
-                ? <FarmLeaderPanel game={game} />
-                : <FarmPanel game={game} onAction={handleAction} />
-            )}
+            {activeTab === 'farm' && renderFarmContent()}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
           </div>
@@ -195,7 +226,6 @@ export default function GameApp() {
         </div>
       </div>
 
-      {/* 通知弹窗 */}
       {showNotifications && (
         <NotificationPopup
           notifications={game.notifications.filter(n => !n.startsWith('event:'))}
@@ -203,7 +233,6 @@ export default function GameApp() {
         />
       )}
 
-      {/* 存档管理面板 */}
       {showSaveLoad && (
         <SaveLoadPanel
           game={game}
@@ -212,7 +241,6 @@ export default function GameApp() {
         />
       )}
 
-      {/* 事件弹窗 */}
       {activeEvent && (
         <EventPopup
           eventType={activeEvent}

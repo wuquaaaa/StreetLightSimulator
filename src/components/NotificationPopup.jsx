@@ -10,7 +10,7 @@ export default function NotificationPopup({ notifications, onDismiss }) {
           <AlertTriangle size={18} className="text-amber-400" />
           <h3 className="text-amber-400 font-bold">通知</h3>
         </div>
-        <div className="space-y-2 mb-4">
+        <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
           {notifications.map((msg, i) => (
             <div key={i} className="text-sm text-stone-300 bg-stone-900/50 rounded p-2">
               {msg}
