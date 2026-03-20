@@ -36,10 +36,11 @@ export function getMoodInfo(mood) {
 export const ROLES_THAT_REVEAL_ATTRIBUTES = ['scholar', 'advisor', 'leader'];
 
 export class Character {
-  constructor({ name, role = 'farmer', isPlayer = false }) {
+  constructor({ name, role = 'farmer', roles, isPlayer = false }) {
     this.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
     this.name = name;
-    this.role = role;
+    // 支持多角色：优先使用 roles 数组，兼容旧的单 role
+    this.roles = roles || (role ? [role] : ['farmer']);
     this.isPlayer = isPlayer;
 
     // 心情 0-100
@@ -57,12 +58,18 @@ export class Character {
       this.knowledgeAttributes[key] = 0;
     }
 
-    if (role === 'farmer') {
+    if (this.roles.includes('farmer')) {
       this.knowledgeAttributes.farming = 5;
     }
 
     this.attributesRevealed = false;
   }
+
+  // 兼容旧代码：返回第一个角色
+  get role() { return this.roles[0] || 'farmer'; }
+  set role(val) { this.roles = [val]; }
+
+  hasRole(role) { return this.roles.includes(role); }
 
   // 心情变化
   changeMood(amount) {
@@ -107,7 +114,7 @@ export class Character {
   }
 
   canSeeAttributes() {
-    return this.attributesRevealed || ROLES_THAT_REVEAL_ATTRIBUTES.includes(this.role);
+    return this.attributesRevealed || this.roles.some(r => ROLES_THAT_REVEAL_ATTRIBUTES.includes(r));
   }
 
   revealAttributes() {
@@ -117,7 +124,7 @@ export class Character {
   // 序列化
   toJSON() {
     return {
-      id: this.id, name: this.name, role: this.role, isPlayer: this.isPlayer,
+      id: this.id, name: this.name, roles: [...this.roles], isPlayer: this.isPlayer,
       mood: this.mood,
       baseAttributes: { ...this.baseAttributes },
       knowledgeAttributes: { ...this.knowledgeAttributes },
@@ -126,7 +133,9 @@ export class Character {
   }
 
   static fromJSON(data) {
-    const char = new Character({ name: data.name, role: data.role, isPlayer: data.isPlayer });
+    // 兼容旧存档的单 role 字段
+    const roles = data.roles || (data.role ? [data.role] : ['farmer']);
+    const char = new Character({ name: data.name, roles, isPlayer: data.isPlayer });
     char.id = data.id;
     char.mood = data.mood ?? 70;
     char.baseAttributes = { ...data.baseAttributes };

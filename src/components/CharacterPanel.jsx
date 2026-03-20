@@ -4,6 +4,7 @@ import { User, Lock, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react'
 
 const ROLE_LABELS = {
   farmer: { name: '农民', icon: '🌾', color: 'text-green-400' },
+  farmer_leader: { name: '农民队长', icon: '👨‍🌾', color: 'text-amber-400' },
   scholar: { name: '学者', icon: '📖', color: 'text-blue-400' },
   trader: { name: '商人', icon: '💰', color: 'text-amber-400' },
   crafter: { name: '工匠', icon: '🔨', color: 'text-orange-400' },
@@ -30,7 +31,8 @@ function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) 
 
 function CharacterCard({ character, expanded, onToggle }) {
   const canSee = character.canSeeAttributes();
-  const roleInfo = ROLE_LABELS[character.role] || { name: character.role, icon: '👤', color: 'text-stone-400' };
+  const primaryRole = character.roles[0] || 'farmer';
+  const roleInfo = ROLE_LABELS[primaryRole] || { name: primaryRole, icon: '👤', color: 'text-stone-400' };
   const moodInfo = getMoodInfo(character.mood);
 
   return (
@@ -44,7 +46,10 @@ function CharacterCard({ character, expanded, onToggle }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm text-stone-200 font-medium">{character.name}</span>
-            <span className={`text-xs ${roleInfo.color}`}>{roleInfo.name}</span>
+            {character.roles.map(r => {
+              const ri = ROLE_LABELS[r] || { name: r, icon: '👤', color: 'text-stone-400' };
+              return <span key={r} className={`text-xs ${ri.color}`}>{ri.name}</span>;
+            })}
             {character.isPlayer && (
               <span className="text-xs px-1.5 py-0.5 bg-amber-900/40 text-amber-400 rounded">你</span>
             )}
@@ -156,14 +161,16 @@ export default function CharacterPanel({ game }) {
   const [activeRole, setActiveRole] = useState('farmer');
   const [expandedCharId, setExpandedCharId] = useState(null);
 
-  // 收集所有角色（目前只有玩家，后续可扩展NPC）
-  const allCharacters = [game.player];
+  // 收集所有角色（玩家 + NPC）
+  const allCharacters = [game.player, ...(game.characters || [])];
 
-  // 按身份分组
+  // 按身份分组（一个角色可以出现在多个组中）
   const roleGroups = {};
   for (const char of allCharacters) {
-    if (!roleGroups[char.role]) roleGroups[char.role] = [];
-    roleGroups[char.role].push(char);
+    for (const role of char.roles) {
+      if (!roleGroups[role]) roleGroups[role] = [];
+      roleGroups[role].push(char);
+    }
   }
 
   const roleKeys = Object.keys(roleGroups);

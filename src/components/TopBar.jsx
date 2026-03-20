@@ -124,6 +124,27 @@ export default function TopBar({ game }) {
 
       {/* 右侧状态 */}
       <div className="flex items-center gap-5 text-sm">
+        {/* 玩家身份 */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-stone-500 text-xs">{game.player.name}</span>
+          <div className="flex gap-1">
+            {game.player.roles.map(r => {
+              const ROLE_MAP = {
+                farmer: { name: '农民', icon: '🌾', color: 'text-green-400' },
+                farmer_leader: { name: '农民队长', icon: '👨‍🌾', color: 'text-amber-400' },
+                scholar: { name: '学者', icon: '📖', color: 'text-blue-400' },
+                trader: { name: '商人', icon: '💰', color: 'text-yellow-400' },
+              };
+              const info = ROLE_MAP[r] || { name: r, icon: '👤', color: 'text-stone-400' };
+              return (
+                <span key={r} className={`text-xs px-1.5 py-0.5 rounded bg-stone-800 ${info.color}`}>
+                  {info.icon} {info.name}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 人口 */}
         <div className="flex items-center gap-1.5" title="人口">
           <Users size={14} className="text-sky-400" />

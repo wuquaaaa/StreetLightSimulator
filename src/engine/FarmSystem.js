@@ -36,10 +36,9 @@ export class FarmPlot {
     // 本次作物的累计产量修正（播种时重置为1.0）
     this.cropYieldMod = 1.0;
 
-    // 病虫害
+    // 病虫害：severity 就是剩余点击次数
     this.hasPest = false;
-    this.pestSeverity = 0;      // 严重度 0-100，影响恶化速度
-    this.pestClicks = 0;        // 剩余点击次数
+    this.pestSeverity = 0;      // 需要点击的次数（也是进度条值）
 
     // 杂草：生长值 0-100，满后保持100
     this.weedGrowth = 0;
@@ -72,7 +71,7 @@ export class FarmPlot {
       id: this.id, name: this.name, state: this.state, cropId: this.cropId,
       growthProgress: this.growthProgress, waterLevel: this.waterLevel,
       fertility: this.fertility, cropYieldMod: this.cropYieldMod,
-      hasPest: this.hasPest, pestSeverity: this.pestSeverity, pestClicks: this.pestClicks,
+      hasPest: this.hasPest, pestSeverity: this.pestSeverity,
       weedGrowth: this.weedGrowth,
     };
   }
@@ -113,7 +112,7 @@ export class FarmSystem {
     plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
-    plot.pestClicks = 0;
+    plot.weedGrowth = 0; // 翻地清除杂草
     character.gainKnowledge('farming', 1);
     return { success: true, message: '翻地完成' };
   }
@@ -156,15 +155,14 @@ export class FarmSystem {
   removePest(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasPest) return { success: false, message: '没有病虫害' };
-    plot.pestClicks--;
+    plot.pestSeverity--;
     character.gainKnowledge('farming', 0.3);
-    if (plot.pestClicks <= 0) {
+    if (plot.pestSeverity <= 0) {
       plot.hasPest = false;
       plot.pestSeverity = 0;
-      plot.pestClicks = 0;
       return { success: true, message: '病虫害已清除！', cleared: true };
     }
-    return { success: true, message: `除虫中...还需${plot.pestClicks}次`, cleared: false };
+    return { success: true, message: `除虫中...还需${plot.pestSeverity}次`, cleared: false };
   }
 
   // 除草：单次点击减少20杂草生长值（与浇水同逻辑）
@@ -213,7 +211,6 @@ export class FarmSystem {
     plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
-    plot.pestClicks = 0;
     // 杂草和水分保留
 
     character.gainKnowledge('farming', 3);
@@ -286,9 +283,9 @@ export class FarmSystem {
           const weedSeverity = (plot.weedGrowth - 40) / 60; // 0~1
           plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - weedSeverity * 0.005);
         }
-        // 病虫害
+        // 病虫害持续减产（严重度越高减产越快）
         if (plot.hasPest) {
-          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - (plot.pestSeverity / 100) * 0.008);
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.003 * plot.pestSeverity);
         }
 
         // === 缺水枯萎 ===
@@ -301,23 +298,16 @@ export class FarmSystem {
         // === 病虫害随机出现（立即减产5%）===
         if (!plot.hasPest && Math.random() < 0.008) {
           plot.hasPest = true;
-          plot.pestSeverity = 5;
-          plot.pestClicks = 3 + Math.floor(Math.random() * 5); // 3-7次
+          plot.pestSeverity = 3 + Math.floor(Math.random() * 5); // 3-7次点击清除
           plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.05);
           events.push({ type: 'pest', plotId: plot.id });
-        }
-
-        // 病虫害恶化
-        if (plot.hasPest) {
-          plot.pestSeverity = Math.min(100, plot.pestSeverity + 0.5);
         }
       }
 
       // 成熟后继续恶化
       if (plot.state === FIELD_STATE.READY) {
         if (plot.hasPest) {
-          plot.pestSeverity = Math.min(100, plot.pestSeverity + 0.3);
-          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - (plot.pestSeverity / 100) * 0.005);
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.002 * plot.pestSeverity);
         }
         if (plot.weedGrowth > 40) {
           plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.002);
@@ -328,16 +318,15 @@ export class FarmSystem {
     // === 病虫害传染 ===
     for (let i = 0; i < this.plots.length; i++) {
       const plot = this.plots[i];
-      if (!plot.hasPest || plot.pestSeverity < 30) continue;
+      if (!plot.hasPest || plot.pestSeverity < 3) continue;
       const neighbors = [this.plots[i - 1], this.plots[i + 1]].filter(Boolean);
       for (const neighbor of neighbors) {
         if (neighbor.hasPest) continue;
         if (neighbor.state !== FIELD_STATE.GROWING && neighbor.state !== FIELD_STATE.READY) continue;
-        const spreadChance = (plot.pestSeverity / 100) * 0.01;
+        const spreadChance = 0.005 * plot.pestSeverity;
         if (Math.random() < spreadChance) {
           neighbor.hasPest = true;
-          neighbor.pestSeverity = 5;
-          neighbor.pestClicks = 3 + Math.floor(Math.random() * 4);
+          neighbor.pestSeverity = 3 + Math.floor(Math.random() * 3); // 传染较轻 3-5次
           neighbor.cropYieldMod = Math.max(0.1, neighbor.cropYieldMod - 0.05);
           events.push({ type: 'pest_spread', plotId: neighbor.id, fromPlotId: plot.id });
         }

@@ -2,11 +2,14 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState } from '../engine/GameState';
 import TopBar from './TopBar';
 import FarmPanel from './FarmPanel';
+import FarmLeaderPanel from './FarmLeaderPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
-import { Wheat, Package, User, Pause, Play, Save } from 'lucide-react';
+import SaveLoadPanel from './SaveLoadPanel';
+import EventPopup from './EventPopup';
+import { Wheat, Package, User, Pause, Play, Save, Download } from 'lucide-react';
 
 const TABS = [
   { id: 'farm', label: '农田', icon: Wheat },
@@ -18,17 +21,20 @@ const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5分钟
 
 export default function GameApp() {
-  const [game] = useState(() => {
-    const loaded = GameState.load();
+  const [game, setGame] = useState(() => {
+    const loaded = GameState.loadAny();
     return loaded || new GameState('旅人');
   });
   const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
   const [showNotifications, setShowNotifications] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
+  const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [activeEvent, setActiveEvent] = useState(null);
   const timerRef = useRef(null);
   const autoSaveRef = useRef(null);
+  const gameRef = useRef(game);
+  gameRef.current = game;
 
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
 
@@ -41,10 +47,21 @@ export default function GameApp() {
     }
 
     timerRef.current = setInterval(() => {
-      game.tick();
+      const g = gameRef.current;
+      g.tick();
 
-      // 有通知时显示弹窗，但不暂停
-      if (game.notifications.length > 0) {
+      // 检查事件通知
+      const eventNotifs = g.notifications.filter(n => n.startsWith('event:'));
+      const normalNotifs = g.notifications.filter(n => !n.startsWith('event:'));
+
+      if (eventNotifs.length > 0) {
+        const eventType = eventNotifs[0].replace('event:', '');
+        setActiveEvent(eventType);
+        // 移除事件通知
+        g.notifications = normalNotifs;
+      }
+
+      if (normalNotifs.length > 0) {
         setShowNotifications(true);
       }
 
@@ -56,41 +73,56 @@ export default function GameApp() {
     };
   }, [game, paused]);
 
-  // 自动存档（5分钟）
+  // 自动存档（5分钟）到栏位0
   useEffect(() => {
     autoSaveRef.current = setInterval(() => {
-      game.save();
-      game.addLog('自动存档完成');
+      const g = gameRef.current;
+      g.save(0);
+      g.addLog('自动存档完成（栏位1）');
       setVersion(v => v + 1);
     }, AUTOSAVE_INTERVAL);
 
     return () => {
       if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     };
-  }, [game]);
+  }, []);
 
   const handleAction = useCallback((action, params = {}) => {
-    game.doAction(action, params);
+    const g = gameRef.current;
+    g.doAction(action, params);
     forceUpdate();
-  }, [game, forceUpdate]);
+  }, [forceUpdate]);
 
   const handleDismissNotifications = useCallback(() => {
-    game.clearNotifications();
+    const g = gameRef.current;
+    g.notifications = g.notifications.filter(n => !n.startsWith('event:'));
+    g.clearNotifications();
     setShowNotifications(false);
     forceUpdate();
-  }, [game, forceUpdate]);
+  }, [forceUpdate]);
 
   const togglePause = useCallback(() => {
     setPaused(p => !p);
   }, []);
 
-  const handleSave = useCallback(() => {
-    const ok = game.save();
-    setSaveMsg(ok ? '存档成功' : '存档失败');
-    setTimeout(() => setSaveMsg(''), 2000);
-    if (ok) game.addLog('手动存档完成');
+  const handleEventAction = useCallback((action, params = {}) => {
+    if (action === 'dismiss_event') {
+      setActiveEvent(null);
+      return;
+    }
+    const g = gameRef.current;
+    g.doAction(action, params);
     forceUpdate();
-  }, [game, forceUpdate]);
+  }, [forceUpdate]);
+
+  const handleLoadGame = useCallback((loadedGame) => {
+    setGame(loadedGame);
+    gameRef.current = loadedGame;
+    forceUpdate();
+  }, [forceUpdate]);
+
+  // 判断是否显示农民队长视图
+  const showLeaderView = game.player.hasRole('farmer_leader') && !game.player.hasRole('farmer');
 
   return (
     <div className="w-full h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden">
@@ -119,19 +151,14 @@ export default function GameApp() {
 
           <div className="flex-1" />
 
-          {/* 存档按钮 */}
+          {/* 存档管理按钮 */}
           <button
-            onClick={handleSave}
-            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors relative"
-            title="手动存档"
+            onClick={() => setShowSaveLoad(true)}
+            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
+            title="存档管理"
           >
             <Save size={18} />
             存档
-            {saveMsg && (
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-xs text-green-400 whitespace-nowrap bg-stone-800 px-2 py-0.5 rounded shadow">
-                {saveMsg}
-              </span>
-            )}
           </button>
 
           {/* 暂停/继续按钮 */}
@@ -152,7 +179,11 @@ export default function GameApp() {
         {/* 主内容区 */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-5">
-            {activeTab === 'farm' && <FarmPanel game={game} onAction={handleAction} />}
+            {activeTab === 'farm' && (
+              showLeaderView
+                ? <FarmLeaderPanel game={game} />
+                : <FarmPanel game={game} onAction={handleAction} />
+            )}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
           </div>
@@ -164,11 +195,28 @@ export default function GameApp() {
         </div>
       </div>
 
-      {/* 通知弹窗（不暂停游戏） */}
+      {/* 通知弹窗 */}
       {showNotifications && (
         <NotificationPopup
-          notifications={game.notifications}
+          notifications={game.notifications.filter(n => !n.startsWith('event:'))}
           onDismiss={handleDismissNotifications}
+        />
+      )}
+
+      {/* 存档管理面板 */}
+      {showSaveLoad && (
+        <SaveLoadPanel
+          game={game}
+          onClose={() => setShowSaveLoad(false)}
+          onLoad={handleLoadGame}
+        />
+      )}
+
+      {/* 事件弹窗 */}
+      {activeEvent && (
+        <EventPopup
+          eventType={activeEvent}
+          onAction={handleEventAction}
         />
       )}
     </div>

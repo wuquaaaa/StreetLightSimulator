@@ -7,7 +7,8 @@ import { Character } from './Character';
 import { FarmSystem, FarmPlot } from './FarmSystem';
 import { WarehouseSystem } from './WarehouseSystem';
 
-const SAVE_KEY = 'streetlight_save';
+const SAVE_KEY_PREFIX = 'streetlight_save_';
+const SAVE_SLOTS = 5;
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -18,9 +19,13 @@ export class GameState {
     this.population = 1;
     this.foodPerPerson = 2;
 
-    this.player = new Character({ name: playerName, role: 'farmer', isPlayer: true });
+    this.player = new Character({ name: playerName, roles: ['farmer'], isPlayer: true });
+    this.characters = []; // NPC角色列表
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
+
+    // 事件系统
+    this.triggeredEvents = {}; // 已触发事件的记录
 
     // 初始物资
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
@@ -56,6 +61,12 @@ export class GameState {
       if (newSeason !== this.season) {
         this.season = newSeason;
         this.addLog(`季节变化：进入了${this.season}季`);
+      }
+
+      // 第10天招工事件
+      if (this.day === 10 && !this.triggeredEvents['day10_recruit']) {
+        this.triggeredEvents['day10_recruit'] = 'pending';
+        this.addNotification('event:day10_recruit');
       }
 
       // 消耗食物
@@ -154,6 +165,38 @@ export class GameState {
       case 'upgrade_warehouse':
         result = this.warehouse.upgradeWarehouse(params.category);
         break;
+      case 'recruit_accept': {
+        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
+          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英'];
+        const name = CHINESE_NAMES[Math.floor(Math.random() * CHINESE_NAMES.length)];
+        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
+        npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
+        this.characters.push(npc);
+        this.population++;
+        this.triggeredEvents['day10_recruit'] = 'accepted';
+        this.addLog(`${name}加入了你的队伍！他是一个农民。`);
+        // 玩家身份变化的选择由UI触发
+        result = { success: true, message: `${name}加入了`, npcName: name };
+        break;
+      }
+      case 'recruit_reject':
+        this.triggeredEvents['day10_recruit'] = 'rejected';
+        this.addLog('你拒绝了来访者的请求。');
+        result = { success: true, message: '拒绝了招工请求' };
+        break;
+      case 'set_player_roles':
+        if (params.roles && Array.isArray(params.roles)) {
+          this.player.roles = params.roles;
+          const roleNames = params.roles.map(r => {
+            const map = { farmer: '农民', farmer_leader: '农民队长', scholar: '学者', trader: '商人' };
+            return map[r] || r;
+          }).join('、');
+          this.addLog(`你现在的身份是：${roleNames}`);
+          result = { success: true, message: `身份已更新` };
+        } else {
+          result = { success: false, message: '无效的角色参数' };
+        }
+        break;
       default:
         result = { success: false, message: '未知操作' };
     }
@@ -168,10 +211,10 @@ export class GameState {
   addNotification(msg) { this.notifications.push(msg); }
   clearNotifications() { this.notifications = []; }
 
-  // ====== 存档系统 ======
-  save() {
+  // ====== 存档系统（5个栏位）======
+  _serializeData() {
     const data = {
-      version: 1,
+      version: 2,
       timestamp: Date.now(),
       day: this.day,
       tickCount: this.tickCount,
@@ -179,6 +222,8 @@ export class GameState {
       population: this.population,
       foodPerPerson: this.foodPerPerson,
       player: this.player.toJSON(),
+      characters: this.characters.map(c => c.toJSON()),
+      triggeredEvents: { ...this.triggeredEvents },
       farm: this.farm.toJSON(),
       warehouse: {
         common: {
@@ -190,7 +235,6 @@ export class GameState {
       },
       log: this.log.slice(-50),
     };
-    // 保存仓库专用仓库状态
     for (const [key, cat] of Object.entries(this.warehouse.storage)) {
       data.warehouse.storage[key] = {
         items: { ...cat.items },
@@ -199,54 +243,110 @@ export class GameState {
         unlocked: cat.unlocked,
       };
     }
+    return data;
+  }
+
+  save(slot = 0) {
+    const data = this._serializeData();
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      localStorage.setItem(`${SAVE_KEY_PREFIX}${slot}`, JSON.stringify(data));
       return true;
     } catch {
       return false;
     }
   }
 
-  static load() {
-    try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (!data || data.version !== 1) return null;
+  static _restoreFromData(data) {
+    const game = new GameState();
+    game.day = data.day;
+    game.tickCount = data.tickCount;
+    game.season = data.season;
+    game.population = data.population;
+    game.foodPerPerson = data.foodPerPerson;
+    game.player = Character.fromJSON(data.player);
+    game.characters = (data.characters || []).map(c => Character.fromJSON(c));
+    game.triggeredEvents = data.triggeredEvents || {};
+    game.farm = FarmSystem.fromJSON(data.farm);
+    game.log = data.log || [];
 
-      const game = new GameState();
-      game.day = data.day;
-      game.tickCount = data.tickCount;
-      game.season = data.season;
-      game.population = data.population;
-      game.foodPerPerson = data.foodPerPerson;
-      game.player = Character.fromJSON(data.player);
-      game.farm = FarmSystem.fromJSON(data.farm);
-      game.log = data.log || [];
-
-      // 恢复仓库
-      if (data.warehouse) {
-        game.warehouse.common.items = data.warehouse.common.items || {};
-        game.warehouse.common.capacity = data.warehouse.common.capacity || 300;
-        game.warehouse.common.level = data.warehouse.common.level || 1;
-        for (const [key, cat] of Object.entries(data.warehouse.storage || {})) {
-          if (game.warehouse.storage[key]) {
-            game.warehouse.storage[key].items = cat.items || {};
-            game.warehouse.storage[key].capacity = cat.capacity || 200;
-            game.warehouse.storage[key].level = cat.level || 0;
-            game.warehouse.storage[key].unlocked = cat.unlocked || false;
-          }
+    if (data.warehouse) {
+      game.warehouse.common.items = data.warehouse.common.items || {};
+      game.warehouse.common.capacity = data.warehouse.common.capacity || 300;
+      game.warehouse.common.level = data.warehouse.common.level || 1;
+      for (const [key, cat] of Object.entries(data.warehouse.storage || {})) {
+        if (game.warehouse.storage[key]) {
+          game.warehouse.storage[key].items = cat.items || {};
+          game.warehouse.storage[key].capacity = cat.capacity || 200;
+          game.warehouse.storage[key].level = cat.level || 0;
+          game.warehouse.storage[key].unlocked = cat.unlocked || false;
         }
       }
+    }
 
-      game.addLog('存档已加载');
-      return game;
+    game.addLog('存档已加载');
+    return game;
+  }
+
+  static load(slot = 0) {
+    try {
+      const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${slot}`);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || (data.version !== 1 && data.version !== 2)) return null;
+      return GameState._restoreFromData(data);
     } catch {
       return null;
     }
   }
 
+  // 获取所有栏位信息
+  static getSaveSlots() {
+    const slots = [];
+    for (let i = 0; i < SAVE_SLOTS; i++) {
+      try {
+        const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`);
+        if (raw) {
+          const data = JSON.parse(raw);
+          slots.push({
+            slot: i,
+            occupied: true,
+            day: data.day,
+            season: data.season,
+            timestamp: data.timestamp,
+            playerName: data.player?.name || '未知',
+          });
+        } else {
+          slots.push({ slot: i, occupied: false });
+        }
+      } catch {
+        slots.push({ slot: i, occupied: false });
+      }
+    }
+    return slots;
+  }
+
   static hasSave() {
-    return !!localStorage.getItem(SAVE_KEY);
+    for (let i = 0; i < SAVE_SLOTS; i++) {
+      if (localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`)) return true;
+    }
+    // 兼容旧存档
+    return !!localStorage.getItem('streetlight_save');
+  }
+
+  static loadAny() {
+    // 先尝试新格式
+    for (let i = 0; i < SAVE_SLOTS; i++) {
+      const game = GameState.load(i);
+      if (game) return game;
+    }
+    // 兼容旧存档
+    try {
+      const raw = localStorage.getItem('streetlight_save');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.version === 1) return GameState._restoreFromData(data);
+      }
+    } catch { /* ignore */ }
+    return null;
   }
 }

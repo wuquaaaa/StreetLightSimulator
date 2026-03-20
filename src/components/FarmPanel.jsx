@@ -89,7 +89,13 @@ function PlotCard({ plot, onAction, onPlant }) {
   };
 
   return (
-    <div className="rounded-lg border border-stone-700 p-3 bg-stone-800/50 h-64 flex flex-col">
+    <div className={`rounded-lg border p-3 bg-stone-800/50 h-64 flex flex-col ${
+      plot.state === FIELD_STATE.PLANTED || plot.state === FIELD_STATE.GROWING
+        ? 'border-green-700/50'
+        : plot.state === FIELD_STATE.READY
+          ? 'border-yellow-600/50'
+          : 'border-stone-700'
+    }`}>
       {/* 头部 */}
       <div className="flex items-center justify-between mb-1.5 h-6">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -164,10 +170,10 @@ function PlotCard({ plot, onAction, onPlant }) {
 
         {/* 病虫害 + 除虫（显示剩余点击次数） */}
         {plot.hasPest && (
-          <BarRow label="虫害" value={plot.pestSeverity} max={100} color="#ef4444" warning
+          <BarRow label="虫害" value={plot.pestSeverity} max={7} color="#ef4444" warning
             btn={{ onClick: () => onAction('remove_pest', { plotId: plot.id }),
               className: 'bg-red-800/60 hover:bg-red-700/60 text-red-200',
-              icon: <Bug size={12} />, label: `除虫` }} />
+              icon: <Bug size={12} />, label: `除虫(${plot.pestSeverity})` }} />
         )}
       </div>
 
