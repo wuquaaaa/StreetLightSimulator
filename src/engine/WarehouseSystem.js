@@ -4,13 +4,13 @@
  * 专用仓库：随游戏进度解锁，解锁前不展示
  */
 
-// 专用仓库分类（按进度解锁）
+// 专用仓库分类（通过事件解锁，不按天数）
 export const WAREHOUSE_CATEGORIES = {
-  food: { name: '食物', icon: '🍞', color: '#f59e0b', unlockDay: 15 },
-  mineral: { name: '矿物', icon: '⛏️', color: '#6b7280', unlockDay: 30 },
-  material: { name: '材料', icon: '🪵', color: '#92400e', unlockDay: 25 },
-  tool: { name: '工具', icon: '🔧', color: '#3b82f6', unlockDay: 40 },
-  seed: { name: '种子', icon: '🌱', color: '#22c55e', unlockDay: 20 },
+  food: { name: '食物', icon: '🍞', color: '#f59e0b' },
+  mineral: { name: '矿物', icon: '⛏️', color: '#6b7280' },
+  material: { name: '材料', icon: '🪵', color: '#92400e' },
+  tool: { name: '工具', icon: '🔧', color: '#3b82f6' },
+  seed: { name: '种子', icon: '🌱', color: '#22c55e' },
 };
 
 export class WarehouseSystem {
@@ -158,16 +158,10 @@ export class WarehouseSystem {
     };
   }
 
-  // ======== 根据天数检查并解锁仓库 ========
-  checkUnlocks(day) {
-    const newUnlocks = [];
-    for (const [catKey, catDef] of Object.entries(WAREHOUSE_CATEGORIES)) {
-      if (!this.storage[catKey].unlocked && day >= catDef.unlockDay) {
-        this.unlockWarehouse(catKey);
-        newUnlocks.push(catDef.name);
-      }
-    }
-    return newUnlocks;
+  // ======== 通过事件解锁仓库（外部调用） ========
+  checkUnlocks() {
+    // 不再按天数自动解锁，由外部事件触发 unlockWarehouse()
+    return [];
   }
 
   // ======== 获取摘要（只返回已解锁的专用仓库） ========

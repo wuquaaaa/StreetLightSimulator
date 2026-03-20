@@ -73,12 +73,7 @@ export class GameState {
         this.addNotification('警告：食物耗尽！');
       }
 
-      // 检查仓库解锁
-      const newUnlocks = this.warehouse.checkUnlocks(this.day);
-      for (const name of newUnlocks) {
-        this.addLog(`${name}仓库已解锁！`);
-        this.addNotification(`新仓库解锁：${name}仓库`);
-      }
+      // 仓库通过事件解锁，不再按天数自动解锁
     }
 
     // 农田tick

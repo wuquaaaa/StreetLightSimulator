@@ -4,11 +4,12 @@
  * 核心机制：
  * - 小麦10天（100 tick）长成
  * - 肥力基准60：<60减产，>60增产，可通过施肥提高
- * - 水分<60 开始减产
- * - 病虫害随机出现，会传染相邻农田，出现即减产，时间越久减产越多
- * - 杂草在有作物后积累生长值，正常50tick出现
- * - 减产是永久性的！问题出现后即使解决，减产系数不会恢复
- * - 除草按钮常驻：没杂草时减少杂草生长值，有杂草时清除杂草
+ * - 水分<60：每天永久降低本次作物产量，越低降越多
+ * - 杂草>40：每天永久降低本次作物产量，越高降越多
+ * - 病虫害出现即永久降产，严重度越高每天降越多
+ * - 以上永久减产针对本次种植的作物，重新播种后刷新
+ * - 除草按钮常驻：没杂草时减少生长值，有杂草时点击清除
+ * - 水分和杂草在未播种时也展示
  * - 开垦农田无上限
  */
 
@@ -26,28 +27,26 @@ export const FIELD_STATE = {
 export class FarmPlot {
   constructor(id, index) {
     this.id = id;
-    this.name = `农田 ${index}`;   // 可编辑名称
+    this.name = `农田 ${index}`;
     this.state = FIELD_STATE.EMPTY;
     this.cropId = null;
-    this.growthProgress = 0;   // 0-100
+    this.growthProgress = 0;
     this.waterLevel = 50;
     this.fertility = 60 + Math.floor(Math.random() * 30);
 
-    // 永久增/减产系数：1.0=基础，只会因为事件而改变，不可恢复
-    this.permanentYieldMod = 1.0;
+    // 本次作物的累计产量修正（播种时重置为1.0）
+    this.cropYieldMod = 1.0;
 
     // 病虫害
     this.hasPest = false;
-    this.pestSeverity = 0;      // 严重程度 0-100
-    this.pestClicks = 0;        // 清除所需点击数
-    this._pestPenaltyApplied = false; // 是否已施加永久减产
+    this.pestSeverity = 0;
+    this.pestClicks = 0;
 
-    // 杂草
-    this.weedGrowth = 0;        // 杂草生长积累值 0-100
+    // 杂草（任何状态都会积累）
+    this.weedGrowth = 0;
     this.hasWeeds = false;
     this.weedLevel = 0;
     this.weedClicks = 0;
-    this._weedPenaltyApplied = false;
   }
 
   getCropDef() {
@@ -60,48 +59,21 @@ export class FarmPlot {
    */
   getFertilityModifier() {
     if (this.fertility <= 60) {
-      // 0→0.4, 60→1.0
       return 0.4 + (this.fertility / 60) * 0.6;
     } else {
-      // 60→1.0, 100→1.3
       return 1.0 + ((this.fertility - 60) / 40) * 0.3;
     }
   }
 
   /**
-   * 当前临时减产系数（水分、病虫害、杂草的实时影响）
-   * 这个不直接用于最终产量，而是用于UI显示当前状态
-   */
-  getCurrentPenalties() {
-    let waterPenalty = 0;
-    let pestPenalty = 0;
-    let weedPenalty = 0;
-
-    if (this.waterLevel < 60) {
-      waterPenalty = (1 - this.waterLevel / 60) * 0.6; // 最多减60%
-    }
-    if (this.hasPest) {
-      pestPenalty = this.pestSeverity / 100 * 0.8; // 最多减80%
-    }
-    if (this.hasWeeds) {
-      weedPenalty = Math.min(this.weedLevel / 150, 1) * 0.7; // 最多减70%
-    }
-
-    return { waterPenalty, pestPenalty, weedPenalty };
-  }
-
-  /**
-   * 综合产量系数 = 永久系数 × 肥力系数 × 当前临时系数
+   * 综合产量系数 = 本次作物累计修正 × 肥力系数
    */
   getYieldModifier() {
-    const fertMod = this.getFertilityModifier();
-    const penalties = this.getCurrentPenalties();
-    const tempMod = Math.max(0.1, 1 - penalties.waterPenalty - penalties.pestPenalty - penalties.weedPenalty);
-    return this.permanentYieldMod * fertMod * tempMod;
+    return this.cropYieldMod * this.getFertilityModifier();
   }
 
   /**
-   * 增/减产百分比显示值：正数=增产，负数=减产
+   * 增/减产百分比（用于UI产量条）
    */
   getYieldPercent() {
     return Math.round((this.getYieldModifier() - 1) * 100);
@@ -116,7 +88,6 @@ export class FarmSystem {
     ];
   }
 
-  // 重命名农田
   renamePlot(plotId, newName) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -126,7 +97,6 @@ export class FarmSystem {
     return { success: true, message: `已重命名为 ${trimmed}` };
   }
 
-  // 翻地
   plow(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -137,22 +107,16 @@ export class FarmSystem {
     plot.state = FIELD_STATE.PLOWED;
     plot.cropId = null;
     plot.growthProgress = 0;
+    plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
     plot.pestClicks = 0;
-    plot._pestPenaltyApplied = false;
-    plot.weedGrowth = 0;
-    plot.hasWeeds = false;
-    plot.weedLevel = 0;
-    plot.weedClicks = 0;
-    plot._weedPenaltyApplied = false;
-    // permanentYieldMod 保留！不重置
+    // 杂草和水分保留，不因翻地重置
 
     character.gainKnowledge('farming', 1);
     return { success: true, message: '翻地完成' };
   }
 
-  // 播种
   plant(plotId, cropId, character, warehouse) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -170,34 +134,24 @@ export class FarmSystem {
     plot.state = FIELD_STATE.PLANTED;
     plot.cropId = cropId;
     plot.growthProgress = 0;
-    plot.weedGrowth = 0;
-    plot.hasWeeds = false;
-    plot.weedLevel = 0;
-    plot._weedPenaltyApplied = false;
+    // 播种时产量修正重置
+    plot.cropYieldMod = 1.0;
 
     character.gainKnowledge('farming', 2);
     return { success: true, message: `播种了${crop.name}` };
   }
 
-  // 浇水
   water(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    if (plot.state !== FIELD_STATE.PLANTED && plot.state !== FIELD_STATE.GROWING) {
-      return { success: false, message: '这块地不需要浇水' };
-    }
     plot.waterLevel = Math.min(100, plot.waterLevel + 30);
     character.gainKnowledge('farming', 0.5);
     return { success: true, message: '浇水完成' };
   }
 
-  // 施肥
   fertilize(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    if (plot.state === FIELD_STATE.EMPTY) {
-      return { success: false, message: '空地不需要施肥' };
-    }
     if (plot.fertility >= 100) {
       return { success: false, message: '肥力已满' };
     }
@@ -206,7 +160,6 @@ export class FarmSystem {
     return { success: true, message: `施肥完成，肥力 ${Math.floor(plot.fertility)}` };
   }
 
-  // 除虫
   removePest(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasPest) return { success: false, message: '没有病虫害' };
@@ -223,7 +176,7 @@ export class FarmSystem {
     return { success: true, message: `除虫中...还需${plot.pestClicks}次`, cleared: false };
   }
 
-  // 除草（常驻按钮：有杂草时清除，没杂草时减少生长值）
+  // 除草（常驻按钮）
   removeWeeds(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -231,7 +184,6 @@ export class FarmSystem {
     character.gainKnowledge('farming', 0.2);
 
     if (plot.hasWeeds) {
-      // 有杂草：点击清除
       plot.weedClicks--;
       if (plot.weedClicks <= 0) {
         plot.hasWeeds = false;
@@ -242,13 +194,11 @@ export class FarmSystem {
       }
       return { success: true, message: `除草中...还需${plot.weedClicks}次`, cleared: false };
     } else {
-      // 没杂草：减少积累值
       plot.weedGrowth = Math.max(0, plot.weedGrowth - 20);
       return { success: true, message: `清理杂草萌芽，生长值 ${Math.floor(plot.weedGrowth)}%` };
     }
   }
 
-  // 收获
   harvest(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -257,7 +207,6 @@ export class FarmSystem {
     const crop = plot.getCropDef();
     if (!crop) return { success: false, message: '没有种植作物' };
 
-    // 产出 = 基础产量 × 角色效率 × 综合增减产
     const yieldMod = plot.getYieldModifier();
     const { amount: rawAmount, isHighQuality } = character.calculateOutput(
       crop.baseYield, 'farming', 'focus'
@@ -267,25 +216,21 @@ export class FarmSystem {
     const totalYield = actualYield + bonusYield;
     const seedBack = Math.random() < 0.6 ? crop.seedCost : 0;
 
+    const yieldPct = Math.round((yieldMod - 1) * 100);
+
     // 重置
     plot.state = FIELD_STATE.EMPTY;
     plot.cropId = null;
     plot.growthProgress = 0;
     plot.fertility = Math.max(20, plot.fertility - 5);
+    plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
     plot.pestClicks = 0;
-    plot._pestPenaltyApplied = false;
-    plot.weedGrowth = 0;
-    plot.hasWeeds = false;
-    plot.weedLevel = 0;
-    plot.weedClicks = 0;
-    plot._weedPenaltyApplied = false;
-    // permanentYieldMod 不重置
+    // 杂草和水分保留
 
     character.gainKnowledge('farming', 3);
 
-    const yieldPct = plot.getYieldPercent !== undefined ? Math.round((yieldMod - 1) * 100) : 0;
     let message = `收获了 ${totalYield} 单位${crop.name}`;
     if (yieldPct < -5) message += `（减产 ${Math.abs(yieldPct)}%）`;
     if (yieldPct > 5) message += `（增产 ${yieldPct}%）`;
@@ -302,13 +247,18 @@ export class FarmSystem {
   // ====== 每tick自动更新 ======
   tick() {
     const events = [];
+    const isNewDay = false; // caller tells us via tickCount, but we handle daily penalty here
 
     for (let i = 0; i < this.plots.length; i++) {
       const plot = this.plots[i];
 
-      // 有作物的农田：水分和肥力流失
+      // --- 所有非空地状态：水分自然蒸发 ---
+      if (plot.state !== FIELD_STATE.EMPTY) {
+        plot.waterLevel = Math.max(0, plot.waterLevel - 1.5);
+      }
+
+      // --- 有作物的农田：肥力流失 ---
       if (plot.state === FIELD_STATE.PLANTED || plot.state === FIELD_STATE.GROWING) {
-        plot.waterLevel = Math.max(0, plot.waterLevel - 2);
         plot.fertility = Math.max(10, plot.fertility - 0.2);
       }
 
@@ -318,11 +268,27 @@ export class FarmSystem {
         plot.growthProgress = 1;
       }
 
+      // --- 杂草积累（所有非空地状态）---
+      if (plot.state !== FIELD_STATE.EMPTY && !plot.hasWeeds) {
+        const weedFertMod = 0.5 + (plot.fertility / 100) * 0.8;
+        const weedWaterMod = 0.5 + (plot.waterLevel / 100) * 0.8;
+        plot.weedGrowth += 2 * weedFertMod * weedWaterMod;
+
+        if (plot.weedGrowth >= 100) {
+          plot.hasWeeds = true;
+          plot.weedLevel = 1;
+          plot.weedClicks = 3 + Math.floor(Math.random() * 3);
+          events.push({ type: 'weed', plotId: plot.id });
+        }
+      } else if (plot.hasWeeds) {
+        plot.weedLevel = Math.min(150, plot.weedLevel + 0.5);
+      }
+
       if (plot.state === FIELD_STATE.GROWING) {
         const crop = plot.getCropDef();
         if (!crop) continue;
 
-        // === 作物生长（10天=100tick）===
+        // === 作物生长 ===
         const waterGrowthMod = plot.waterLevel > 30 ? 1 : (plot.waterLevel > 10 ? 0.5 : 0.1);
         const pestGrowthMod = plot.hasPest ? 0.5 : 1;
         const weedGrowthMod = plot.hasWeeds ? 0.7 : 1;
@@ -334,29 +300,25 @@ export class FarmSystem {
           events.push({ type: 'ready', plotId: plot.id, cropName: crop.name });
         }
 
-        // === 杂草生长积累 ===
-        if (!plot.hasWeeds) {
-          const weedFertMod = 0.5 + (plot.fertility / 100) * 0.8;
-          const weedWaterMod = 0.5 + (plot.waterLevel / 100) * 0.8;
-          plot.weedGrowth += 2 * weedFertMod * weedWaterMod;
+        // === 每tick的永久减产（模拟每天） ===
+        // 水分<60：每tick减 0.1%~0.6%（10tick=1天，每天减1%~6%）
+        if (plot.waterLevel < 60) {
+          const waterDeficit = (60 - plot.waterLevel) / 60; // 0~1
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - waterDeficit * 0.006);
+        }
 
-          if (plot.weedGrowth >= 100) {
-            plot.hasWeeds = true;
-            plot.weedLevel = 1;
-            plot.weedClicks = 3 + Math.floor(Math.random() * 3);
-            // 杂草出现 → 永久减产
-            if (!plot._weedPenaltyApplied) {
-              plot.permanentYieldMod = Math.max(0.1, plot.permanentYieldMod - 0.05);
-              plot._weedPenaltyApplied = true;
-            }
-            events.push({ type: 'weed', plotId: plot.id });
-          }
-        } else {
-          plot.weedLevel = Math.min(150, plot.weedLevel + 0.5);
-          // 杂草越严重，额外永久减产（每30级追加一次）
-          if (plot.weedLevel > 0 && Math.floor(plot.weedLevel) % 30 === 0 && plot.weedLevel - Math.floor(plot.weedLevel) < 0.5) {
-            plot.permanentYieldMod = Math.max(0.1, plot.permanentYieldMod - 0.02);
-          }
+        // 杂草>40：每tick减 0~0.5%（每天减0~5%）
+        if (plot.weedGrowth > 40 || plot.hasWeeds) {
+          const weedSeverity = plot.hasWeeds
+            ? 0.4 + (plot.weedLevel / 150) * 0.6  // 0.4~1.0
+            : (plot.weedGrowth - 40) / 60 * 0.4;   // 0~0.4
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - weedSeverity * 0.005);
+        }
+
+        // 病虫害：每tick减产
+        if (plot.hasPest) {
+          const pestPenalty = (plot.pestSeverity / 100) * 0.008;
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - pestPenalty);
         }
 
         // === 缺水枯萎 ===
@@ -371,31 +333,24 @@ export class FarmSystem {
           plot.hasPest = true;
           plot.pestSeverity = 5;
           plot.pestClicks = 3 + Math.floor(Math.random() * 5);
-          // 病虫害出现 → 永久减产
-          if (!plot._pestPenaltyApplied) {
-            plot.permanentYieldMod = Math.max(0.1, plot.permanentYieldMod - 0.05);
-            plot._pestPenaltyApplied = true;
-          }
           events.push({ type: 'pest', plotId: plot.id });
         }
 
         // 病虫害恶化
         if (plot.hasPest) {
           plot.pestSeverity = Math.min(100, plot.pestSeverity + 0.5);
-          // 严重度每到达新的25，追加永久减产
-          if (plot.pestSeverity > 0 && Math.floor(plot.pestSeverity) % 25 === 0 && plot.pestSeverity - Math.floor(plot.pestSeverity) < 0.5) {
-            plot.permanentYieldMod = Math.max(0.1, plot.permanentYieldMod - 0.03);
-          }
         }
       }
 
-      // 成熟的作物也会受影响
+      // 成熟后继续恶化
       if (plot.state === FIELD_STATE.READY) {
         if (plot.hasPest) {
           plot.pestSeverity = Math.min(100, plot.pestSeverity + 0.3);
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - (plot.pestSeverity / 100) * 0.005);
         }
         if (plot.hasWeeds) {
           plot.weedLevel = Math.min(150, plot.weedLevel + 0.3);
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.002);
         }
       }
     }
@@ -415,10 +370,6 @@ export class FarmSystem {
           neighbor.hasPest = true;
           neighbor.pestSeverity = 5;
           neighbor.pestClicks = 3 + Math.floor(Math.random() * 4);
-          if (!neighbor._pestPenaltyApplied) {
-            neighbor.permanentYieldMod = Math.max(0.1, neighbor.permanentYieldMod - 0.05);
-            neighbor._pestPenaltyApplied = true;
-          }
           events.push({ type: 'pest_spread', plotId: neighbor.id, fromPlotId: plot.id });
         }
       }
@@ -427,7 +378,6 @@ export class FarmSystem {
     return events;
   }
 
-  // 开垦新田（无上限）
   expandFarm() {
     const index = this.plots.length + 1;
     const newId = `plot_${index}`;
