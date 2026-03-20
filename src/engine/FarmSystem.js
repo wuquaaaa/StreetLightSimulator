@@ -42,6 +42,9 @@ export class FarmPlot {
 
     // 杂草：生长值 0-100，满后保持100
     this.weedGrowth = 0;
+
+    // 分配给哪个角色管理（角色id）
+    this.assignedTo = null;
   }
 
   getCropDef() {
@@ -72,7 +75,7 @@ export class FarmPlot {
       growthProgress: this.growthProgress, waterLevel: this.waterLevel,
       fertility: this.fertility, cropYieldMod: this.cropYieldMod,
       hasPest: this.hasPest, pestSeverity: this.pestSeverity,
-      weedGrowth: this.weedGrowth,
+      weedGrowth: this.weedGrowth, assignedTo: this.assignedTo,
     };
   }
 
@@ -89,6 +92,28 @@ export class FarmSystem {
       new FarmPlot('plot_1', 1),
       new FarmPlot('plot_2', 2),
     ];
+    this.targetPlotCount = 2; // 目标农田数
+    // 开垦队列：{ characterId, ticksRemaining } 每块田需5天=50tick
+    this.expandQueue = [];
+  }
+
+  assignPlot(plotId, characterId) {
+    const plot = this.plots.find(p => p.id === plotId);
+    if (!plot) return { success: false, message: '找不到农田' };
+    plot.assignedTo = characterId;
+    return { success: true, message: '已分配' };
+  }
+
+  unassignPlot(plotId) {
+    const plot = this.plots.find(p => p.id === plotId);
+    if (!plot) return { success: false, message: '找不到农田' };
+    plot.assignedTo = null;
+    return { success: true, message: '已取消分配' };
+  }
+
+  // 获取某角色负责的农田
+  getPlotsForCharacter(characterId) {
+    return this.plots.filter(p => p.assignedTo === characterId);
   }
 
   renamePlot(plotId, newName) {
@@ -343,14 +368,47 @@ export class FarmSystem {
     return { success: true, message: '成功开垦了一块新农田' };
   }
 
+  // 开始开垦任务（5天=50tick）
+  startExpand(characterId) {
+    // 检查此角色是否已在开垦
+    if (this.expandQueue.find(q => q.characterId === characterId)) {
+      return { success: false, message: '该角色已在开垦' };
+    }
+    this.expandQueue.push({ characterId, ticksRemaining: 50 });
+    return { success: true, message: '开始开垦新农田（预计5天）' };
+  }
+
+  // 每tick推进开垦
+  tickExpand() {
+    const completed = [];
+    this.expandQueue = this.expandQueue.filter(q => {
+      q.ticksRemaining--;
+      if (q.ticksRemaining <= 0) {
+        completed.push(q.characterId);
+        return false;
+      }
+      return true;
+    });
+    for (const charId of completed) {
+      this.expandFarm();
+    }
+    return completed;
+  }
+
   // 序列化
   toJSON() {
-    return { plots: this.plots.map(p => p.toJSON()) };
+    return {
+      plots: this.plots.map(p => p.toJSON()),
+      targetPlotCount: this.targetPlotCount,
+      expandQueue: this.expandQueue.map(q => ({ ...q })),
+    };
   }
 
   static fromJSON(data) {
     const farm = new FarmSystem();
     farm.plots = data.plots.map(p => FarmPlot.fromJSON(p));
+    farm.targetPlotCount = data.targetPlotCount ?? data.plots.length;
+    farm.expandQueue = data.expandQueue || [];
     return farm;
   }
 }

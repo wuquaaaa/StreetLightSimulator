@@ -71,6 +71,17 @@ export class Character {
 
   hasRole(role) { return this.roles.includes(role); }
 
+  /**
+   * 获取工作速率：基准2秒一次操作
+   * 务农经验100%时速率翻倍（1秒一次）
+   * 返回：每个game tick执行的操作次数（tick=2s）
+   * 基准=1次/tick，经验100%=2次/tick
+   */
+  getFarmWorkSpeed() {
+    const farming = this.knowledgeAttributes.farming || 0;
+    return 1 + farming / 100; // 1.0 ~ 2.0
+  }
+
   // 心情变化
   changeMood(amount) {
     this.mood = Math.max(0, Math.min(100, this.mood + amount));

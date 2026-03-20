@@ -127,7 +127,7 @@ export default function GameApp() {
 
   const renderFarmContent = () => {
     if (currentRoleTab === 'farmer_leader') {
-      return <FarmLeaderPanel game={game} />;
+      return <FarmLeaderPanel game={game} onAction={handleAction} />;
     }
     return <FarmPanel game={game} onAction={handleAction} />;
   };

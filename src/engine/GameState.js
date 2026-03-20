@@ -108,6 +108,30 @@ export class GameState {
       }
     }
 
+    // 开垦进度
+    const expandDone = this.farm.tickExpand();
+    for (const charId of expandDone) {
+      const char = this._findCharacter(charId);
+      const charName = char ? char.name : '未知';
+      this.addLog(`${charName}开垦了一块新农田！`);
+      if (char) char.gainKnowledge('farming', 5);
+    }
+
+    // 目标农田数自动开垦
+    if (this.farm.plots.length + this.farm.expandQueue.length < this.farm.targetPlotCount) {
+      // 找一个空闲农民去开垦
+      const allFarmers = this._getAllFarmers();
+      const busyIds = new Set(this.farm.expandQueue.map(q => q.characterId));
+      const idle = allFarmers.find(f => !busyIds.has(f.id) && this.farm.getPlotsForCharacter(f.id).length === 0);
+      if (idle) {
+        this.farm.startExpand(idle.id);
+        this.addLog(`${idle.name}开始开垦新农田...`);
+      }
+    }
+
+    // NPC农民自动劳作
+    this._autoFarmWork();
+
     // 冬天冻害
     if (this.season === '冬' && this.tickCount % 10 === 0) {
       for (const plot of this.farm.plots) {
@@ -187,6 +211,37 @@ export class GameState {
         this.addLog('你拒绝了来访者的请求。也许过些天还会有人来。');
         result = { success: true, message: '拒绝了招工请求' };
         break;
+      case 'assign_plot':
+        result = this.farm.assignPlot(params.plotId, params.characterId);
+        break;
+      case 'unassign_plot':
+        result = this.farm.unassignPlot(params.plotId);
+        break;
+      case 'set_target_plots':
+        if (typeof params.count === 'number' && params.count >= this.farm.plots.length) {
+          this.farm.targetPlotCount = params.count;
+          result = { success: true, message: `目标农田数设为 ${params.count}` };
+        } else {
+          result = { success: false, message: '目标数不能小于当前农田数' };
+        }
+        break;
+      case 'leader_recruit': {
+        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
+          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英',
+          '徐大宝', '宋小美', '冯铁蛋', '褚翠花', '卫大山', '蒋小龙', '沈秋菊', '韩冬梅'];
+        // 避免重名
+        const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
+        const available = CHINESE_NAMES.filter(n => !existing.has(n));
+        const name = available.length > 0
+          ? available[Math.floor(Math.random() * available.length)]
+          : `农民${this.characters.length + 2}号`;
+        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
+        npc.knowledgeAttributes.farming = 1 + Math.floor(Math.random() * 5);
+        this.characters.push(npc);
+        this.population++;
+        result = { success: true, message: `${name}加入了你的队伍` };
+        break;
+      }
       case 'set_player_roles':
         if (params.roles && Array.isArray(params.roles)) {
           this.player.roles = params.roles;
@@ -205,6 +260,95 @@ export class GameState {
     }
     if (result && result.message) this.addLog(result.message);
     return result;
+  }
+
+  _findCharacter(id) {
+    if (this.player.id === id) return this.player;
+    return this.characters.find(c => c.id === id) || null;
+  }
+
+  _getAllFarmers() {
+    const all = [this.player, ...this.characters];
+    return all.filter(c => c.hasRole('farmer'));
+  }
+
+  // NPC农民自动劳作：每tick根据工作速率执行操作
+  _autoFarmWork() {
+    const npcs = this.characters.filter(c => c.hasRole('farmer'));
+    for (const npc of npcs) {
+      // 检查是否在开垦
+      if (this.farm.expandQueue.find(q => q.characterId === npc.id)) continue;
+
+      const plots = this.farm.getPlotsForCharacter(npc.id);
+      if (plots.length === 0) continue;
+
+      const speed = npc.getFarmWorkSpeed();
+      // 用累计器判断本tick执行几次操作
+      // speed=1 → 每tick 1次, speed=2 → 每tick 2次
+      const ops = Math.floor(speed);
+      const remainder = speed - ops;
+      let totalOps = ops + (Math.random() < remainder ? 1 : 0);
+
+      for (let op = 0; op < totalOps; op++) {
+        this._npcDoOneFarmAction(npc, plots);
+      }
+    }
+  }
+
+  _npcDoOneFarmAction(npc, plots) {
+    // 优先级：除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
+    for (const plot of plots) {
+      if (plot.hasPest) {
+        this.farm.removePest(plot.id, npc);
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.state === 'ready') {
+        const result = this.farm.harvest(plot.id, npc);
+        if (result.success && result.yield) {
+          this.warehouse.addItem(result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount);
+          if (result.seedBack) {
+            this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
+          }
+        }
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.waterLevel < 50) {
+        this.farm.water(plot.id, npc);
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.weedGrowth > 50) {
+        this.farm.removeWeeds(plot.id, npc);
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.fertility < 50) {
+        this.farm.fertilize(plot.id, npc);
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.state === 'empty' || plot.state === 'withered') {
+        this.farm.plow(plot.id, npc);
+        return;
+      }
+    }
+    for (const plot of plots) {
+      if (plot.state === 'plowed') {
+        // 自动播种小麦（如果有种子）
+        const seedAmt = this.warehouse.getItemAmount('seed', 'wheat_seed');
+        if (seedAmt >= 1) {
+          this.farm.plant(plot.id, 'wheat', npc, this.warehouse);
+        }
+        return;
+      }
+    }
   }
 
   addLog(msg) {
