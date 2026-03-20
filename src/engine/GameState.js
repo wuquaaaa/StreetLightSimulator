@@ -4,8 +4,10 @@
  */
 
 import { Character } from './Character';
-import { FarmSystem } from './FarmSystem';
+import { FarmSystem, FarmPlot } from './FarmSystem';
 import { WarehouseSystem } from './WarehouseSystem';
+
+const SAVE_KEY = 'streetlight_save';
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -13,15 +15,14 @@ export class GameState {
     this.tickCount = 0;
     this.season = '春';
 
-    // 人口
-    this.population = 1; // 初始1人（玩家自己）
-    this.foodPerPerson = 2; // 每人每天消耗食物
+    this.population = 1;
+    this.foodPerPerson = 2;
 
     this.player = new Character({ name: playerName, role: 'farmer', isPlayer: true });
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
 
-    // 初始物资（全部存入公共仓库）
+    // 初始物资
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
@@ -33,12 +34,10 @@ export class GameState {
     this.notifications = [];
   }
 
-  // tick进度（0~9），用于日月动画
   get tickProgress() {
     return (this.tickCount % 10) / 10;
   }
 
-  // 每天粮食消耗
   get dailyFoodConsumption() {
     return this.population * this.foodPerPerson;
   }
@@ -64,16 +63,20 @@ export class GameState {
       const wheatAmount = this.warehouse.getItemAmount('food', 'wheat');
       if (wheatAmount >= needed) {
         this.warehouse.removeItem('food', 'wheat', needed);
+        // 吃饱了心情自然恢复
+        this.player.changeMood(1);
       } else if (wheatAmount > 0) {
         this.warehouse.removeItem('food', 'wheat', wheatAmount);
         this.addLog(`食物不足！只够吃${wheatAmount}单位...`);
         this.addNotification('警告：食物不足！');
+        // 食物不足减少心情
+        this.player.changeMood(-5);
       } else {
         this.addLog('完全没有食物了！你正在挨饿...');
         this.addNotification('警告：食物耗尽！');
+        // 饥饿大幅减少心情
+        this.player.changeMood(-10);
       }
-
-      // 仓库通过事件解锁，不再按天数自动解锁
     }
 
     // 农田tick
@@ -83,12 +86,11 @@ export class GameState {
         this.addLog(`${evt.cropName}已成熟，可以收获了！`);
       } else if (evt.type === 'withered') {
         this.addLog('一块农田的作物因缺水枯萎了...');
+        this.player.changeMood(-3);
       } else if (evt.type === 'pest') {
         this.addLog('病虫害出现了！请及时除虫！');
       } else if (evt.type === 'pest_spread') {
-        this.addLog(`病虫害从 ${evt.fromPlotId.replace('_', ' #')} 传染到了 ${evt.plotId.replace('_', ' #')}！`);
-      } else if (evt.type === 'weed') {
-        this.addLog(`${evt.plotId.replace('_', ' #')} 长出了杂草！`);
+        this.addLog(`病虫害传染到了邻田！`);
       }
     }
 
@@ -139,6 +141,8 @@ export class GameState {
           if (result.seedBack) {
             this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
           }
+          // 收获增加心情
+          this.player.changeMood(3);
         }
         break;
       case 'expand_farm':
@@ -163,4 +167,86 @@ export class GameState {
   }
   addNotification(msg) { this.notifications.push(msg); }
   clearNotifications() { this.notifications = []; }
+
+  // ====== 存档系统 ======
+  save() {
+    const data = {
+      version: 1,
+      timestamp: Date.now(),
+      day: this.day,
+      tickCount: this.tickCount,
+      season: this.season,
+      population: this.population,
+      foodPerPerson: this.foodPerPerson,
+      player: this.player.toJSON(),
+      farm: this.farm.toJSON(),
+      warehouse: {
+        common: {
+          items: { ...this.warehouse.common.items },
+          capacity: this.warehouse.common.capacity,
+          level: this.warehouse.common.level,
+        },
+        storage: {},
+      },
+      log: this.log.slice(-50),
+    };
+    // 保存仓库专用仓库状态
+    for (const [key, cat] of Object.entries(this.warehouse.storage)) {
+      data.warehouse.storage[key] = {
+        items: { ...cat.items },
+        capacity: cat.capacity,
+        level: cat.level,
+        unlocked: cat.unlocked,
+      };
+    }
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static load() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.version !== 1) return null;
+
+      const game = new GameState();
+      game.day = data.day;
+      game.tickCount = data.tickCount;
+      game.season = data.season;
+      game.population = data.population;
+      game.foodPerPerson = data.foodPerPerson;
+      game.player = Character.fromJSON(data.player);
+      game.farm = FarmSystem.fromJSON(data.farm);
+      game.log = data.log || [];
+
+      // 恢复仓库
+      if (data.warehouse) {
+        game.warehouse.common.items = data.warehouse.common.items || {};
+        game.warehouse.common.capacity = data.warehouse.common.capacity || 300;
+        game.warehouse.common.level = data.warehouse.common.level || 1;
+        for (const [key, cat] of Object.entries(data.warehouse.storage || {})) {
+          if (game.warehouse.storage[key]) {
+            game.warehouse.storage[key].items = cat.items || {};
+            game.warehouse.storage[key].capacity = cat.capacity || 200;
+            game.warehouse.storage[key].level = cat.level || 0;
+            game.warehouse.storage[key].unlocked = cat.unlocked || false;
+          }
+        }
+      }
+
+      game.addLog('存档已加载');
+      return game;
+    } catch {
+      return null;
+    }
+  }
+
+  static hasSave() {
+    return !!localStorage.getItem(SAVE_KEY);
+  }
 }

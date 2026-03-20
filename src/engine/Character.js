@@ -1,21 +1,14 @@
 /**
  * 角色系统 - 路灯计划
- *
- * 基础属性：角色天赋，生成后基本固定，仅通过特定稀有方式改变（如特殊事件、道具）
- * 知识属性：从事相关工作会成长
- * 两者前期全部隐藏，只有解锁特定身份后才能查看
- * 两者共同影响工作的产出和良率
  */
 
-// 基础属性定义（天赋，基本不变）
 export const BASE_ATTRIBUTES = {
   leadership: { name: '领导能力', description: '影响管理效率和团队协作', icon: '👑' },
-  learning: { name: '学习能力', description: '影响获取新知识和技能的速度，间接加快知识属性成长', icon: '📖' },
-  cooperation: { name: '合作能力', description: '影响与他人协作的效率和多人任务产出', icon: '🤝' },
+  learning: { name: '学习能力', description: '影响获取新知识和技能的速度', icon: '📖' },
+  cooperation: { name: '合作能力', description: '影响与他人协作的效率', icon: '🤝' },
   focus: { name: '专注能力', description: '影响工作良率和产出品质', icon: '🎯' },
 };
 
-// 知识属性定义（从事相关工作成长）
 export const KNOWLEDGE_ATTRIBUTES = {
   farming: { name: '耕种经验', description: '影响农业产出量', icon: '🌾' },
   research: { name: '研发经验', description: '影响科研速度和成果', icon: '🔬' },
@@ -24,7 +17,22 @@ export const KNOWLEDGE_ATTRIBUTES = {
   combat: { name: '战斗经验', description: '影响军事能力', icon: '⚔️' },
 };
 
-// 哪些身份可以查看属性
+export const MOOD_LABELS = {
+  90: { text: '欣喜', icon: '😄', color: '#22c55e' },
+  70: { text: '愉快', icon: '🙂', color: '#84cc16' },
+  40: { text: '平静', icon: '😐', color: '#f59e0b' },
+  20: { text: '低落', icon: '😞', color: '#f97316' },
+  0:  { text: '痛苦', icon: '😣', color: '#ef4444' },
+};
+
+export function getMoodInfo(mood) {
+  if (mood >= 90) return MOOD_LABELS[90];
+  if (mood >= 70) return MOOD_LABELS[70];
+  if (mood >= 40) return MOOD_LABELS[40];
+  if (mood >= 20) return MOOD_LABELS[20];
+  return MOOD_LABELS[0];
+}
+
 export const ROLES_THAT_REVEAL_ATTRIBUTES = ['scholar', 'advisor', 'leader'];
 
 export class Character {
@@ -34,126 +42,96 @@ export class Character {
     this.role = role;
     this.isPlayer = isPlayer;
 
-    // ======== 基础属性（天赋，创建时随机，之后基本固定） ========
+    // 心情 0-100
+    this.mood = 70;
+
     this.baseAttributes = {};
     for (const key of Object.keys(BASE_ATTRIBUTES)) {
       this.baseAttributes[key] = isPlayer
-        ? 30 + Math.floor(Math.random() * 40) // 玩家 30-70
-        : 15 + Math.floor(Math.random() * 50); // NPC 15-65
+        ? 30 + Math.floor(Math.random() * 40)
+        : 15 + Math.floor(Math.random() * 50);
     }
 
-    // ======== 知识属性（从事相关工作成长） ========
     this.knowledgeAttributes = {};
     for (const key of Object.keys(KNOWLEDGE_ATTRIBUTES)) {
       this.knowledgeAttributes[key] = 0;
     }
 
-    // 农民身份给少量初始耕种经验
     if (role === 'farmer') {
       this.knowledgeAttributes.farming = 5;
     }
 
-    // ======== 属性可见性（前期全部隐藏） ========
     this.attributesRevealed = false;
   }
 
-  // ======== 产出计算：基础属性 × 知识属性 联合影响 ========
+  // 心情变化
+  changeMood(amount) {
+    this.mood = Math.max(0, Math.min(100, this.mood + amount));
+  }
 
-  /**
-   * 计算某项工作的综合效率
-   * @param {string} knowledgeKey - 相关知识属性 (如 'farming')
-   * @param {string} baseAttrKey - 主要关联的基础属性 (如 'focus')
-   * @returns {number} 综合效率系数，基准为1.0
-   *
-   * 公式：效率 = 基础属性系数 × 知识属性系数
-   *   基础属性系数 = 0.6 + (属性值 / 100) × 0.8    → 范围 0.6~1.4
-   *   知识属性系数 = 0.7 + (经验值 / 100) × 0.8    → 范围 0.7~1.5
-   *   综合范围：0.42 ~ 2.1
-   */
   getWorkEfficiency(knowledgeKey, baseAttrKey) {
     const baseValue = this.baseAttributes[baseAttrKey] || 50;
     const knowledgeValue = this.knowledgeAttributes[knowledgeKey] || 0;
-
     const baseMod = 0.6 + (baseValue / 100) * 0.8;
     const knowledgeMod = 0.7 + (knowledgeValue / 100) * 0.8;
-
-    return baseMod * knowledgeMod;
+    // 心情也影响效率：低心情减产
+    const moodMod = 0.7 + (this.mood / 100) * 0.3; // 0.7~1.0
+    return baseMod * knowledgeMod * moodMod;
   }
 
-  /**
-   * 计算良率（品质概率）
-   * 主要受「专注能力」（基础属性）和相关知识属性影响
-   * @returns {number} 良率 0~1
-   */
   getQualityRate(knowledgeKey) {
     const focusValue = this.baseAttributes.focus || 50;
     const knowledgeValue = this.knowledgeAttributes[knowledgeKey] || 0;
-
-    // 专注力贡献60%权重，知识经验贡献40%权重
     const rate = (focusValue * 0.6 + knowledgeValue * 0.4) / 100;
     return Math.max(0.1, Math.min(0.95, rate));
   }
 
-  /**
-   * 计算产出量
-   * @param {number} baseAmount - 基础产量
-   * @param {string} knowledgeKey - 相关知识属性
-   * @param {string} baseAttrKey - 主要基础属性（默认 focus）
-   * @returns {{ amount: number, isHighQuality: boolean }}
-   */
   calculateOutput(baseAmount, knowledgeKey, baseAttrKey = 'focus') {
     const efficiency = this.getWorkEfficiency(knowledgeKey, baseAttrKey);
     const qualityRate = this.getQualityRate(knowledgeKey);
-
     const amount = Math.max(1, Math.floor(baseAmount * efficiency));
     const isHighQuality = Math.random() < qualityRate;
-
     return { amount, isHighQuality };
   }
 
-  // ======== 知识属性成长 ========
-
-  /**
-   * 从事工作后获得知识经验
-   * 成长速度受「学习能力」（基础属性）影响
-   */
   gainKnowledge(knowledgeKey, baseAmount) {
     if (!(knowledgeKey in this.knowledgeAttributes)) return;
-
     const learningMod = 0.5 + (this.baseAttributes.learning || 50) / 100;
     const actualGain = baseAmount * learningMod;
-
-    this.knowledgeAttributes[knowledgeKey] = Math.min(
-      100,
-      this.knowledgeAttributes[knowledgeKey] + actualGain
-    );
+    this.knowledgeAttributes[knowledgeKey] = Math.min(100, this.knowledgeAttributes[knowledgeKey] + actualGain);
   }
 
-  // ======== 基础属性变更（仅特定方式） ========
-
-  /**
-   * 通过特殊事件/道具改变基础属性
-   * 普通工作不会改变基础属性
-   */
   modifyBaseAttribute(attrKey, amount) {
     if (!(attrKey in this.baseAttributes)) return;
     this.baseAttributes[attrKey] = Math.max(1, Math.min(100, this.baseAttributes[attrKey] + amount));
   }
 
-  // ======== 属性可见性 ========
-
-  /**
-   * 检查当前身份是否可以查看属性
-   */
   canSeeAttributes() {
     return this.attributesRevealed || ROLES_THAT_REVEAL_ATTRIBUTES.includes(this.role);
   }
 
-  /**
-   * 永久解锁属性可见（比如完成特定任务）
-   */
   revealAttributes() {
     this.attributesRevealed = true;
   }
 
+  // 序列化
+  toJSON() {
+    return {
+      id: this.id, name: this.name, role: this.role, isPlayer: this.isPlayer,
+      mood: this.mood,
+      baseAttributes: { ...this.baseAttributes },
+      knowledgeAttributes: { ...this.knowledgeAttributes },
+      attributesRevealed: this.attributesRevealed,
+    };
+  }
+
+  static fromJSON(data) {
+    const char = new Character({ name: data.name, role: data.role, isPlayer: data.isPlayer });
+    char.id = data.id;
+    char.mood = data.mood ?? 70;
+    char.baseAttributes = { ...data.baseAttributes };
+    char.knowledgeAttributes = { ...data.knowledgeAttributes };
+    char.attributesRevealed = data.attributesRevealed;
+    return char;
+  }
 }

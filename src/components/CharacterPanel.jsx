@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BASE_ATTRIBUTES, KNOWLEDGE_ATTRIBUTES } from '../engine/Character';
+import { BASE_ATTRIBUTES, KNOWLEDGE_ATTRIBUTES, getMoodInfo } from '../engine/Character';
 import { User, Lock, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 const ROLE_LABELS = {
@@ -31,6 +31,7 @@ function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) 
 function CharacterCard({ character, expanded, onToggle }) {
   const canSee = character.canSeeAttributes();
   const roleInfo = ROLE_LABELS[character.role] || { name: character.role, icon: '👤', color: 'text-stone-400' };
+  const moodInfo = getMoodInfo(character.mood);
 
   return (
     <div className="border border-stone-700 rounded-lg bg-stone-800/50 overflow-hidden">
@@ -47,6 +48,9 @@ function CharacterCard({ character, expanded, onToggle }) {
             {character.isPlayer && (
               <span className="text-xs px-1.5 py-0.5 bg-amber-900/40 text-amber-400 rounded">你</span>
             )}
+            <span className="text-xs flex items-center gap-1" style={{ color: moodInfo.color }}>
+              {moodInfo.icon} {moodInfo.text}
+            </span>
           </div>
         </div>
         {expanded ? (
@@ -59,7 +63,21 @@ function CharacterCard({ character, expanded, onToggle }) {
       {/* 展开的属性详情 */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-stone-700/50">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+          {/* 心情条 */}
+          <div className="mt-3 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-stone-400 w-10">心情</span>
+              <span className="text-sm">{moodInfo.icon}</span>
+              <div className="flex-1 h-2 bg-stone-700 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${character.mood}%`, backgroundColor: moodInfo.color }} />
+              </div>
+              <span className="text-xs w-16 text-right" style={{ color: moodInfo.color }}>
+                {moodInfo.text} ({Math.floor(character.mood)})
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* 天赋属性 */}
             <div className="rounded-lg border border-stone-700/50 bg-stone-900/30 p-3">
               <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-stone-700/50">

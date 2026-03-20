@@ -6,7 +6,7 @@ import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
-import { Wheat, Package, User, Pause, Play } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save } from 'lucide-react';
 
 const TABS = [
   { id: 'farm', label: '农田', icon: Wheat },
@@ -14,15 +14,21 @@ const TABS = [
   { id: 'character', label: '角色', icon: User },
 ];
 
-const TICK_INTERVAL = 2000; // 2秒一个tick
+const TICK_INTERVAL = 2000;
+const AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5分钟
 
 export default function GameApp() {
-  const [game] = useState(() => new GameState('旅人'));
+  const [game] = useState(() => {
+    const loaded = GameState.load();
+    return loaded || new GameState('旅人');
+  });
   const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
   const [showNotifications, setShowNotifications] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
   const timerRef = useRef(null);
+  const autoSaveRef = useRef(null);
 
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
 
@@ -37,10 +43,9 @@ export default function GameApp() {
     timerRef.current = setInterval(() => {
       game.tick();
 
-      // 如果有通知，暂停并弹出
+      // 有通知时显示弹窗，但不暂停
       if (game.notifications.length > 0) {
         setShowNotifications(true);
-        setPaused(true);
       }
 
       setVersion(v => v + 1);
@@ -51,6 +56,19 @@ export default function GameApp() {
     };
   }, [game, paused]);
 
+  // 自动存档（5分钟）
+  useEffect(() => {
+    autoSaveRef.current = setInterval(() => {
+      game.save();
+      game.addLog('自动存档完成');
+      setVersion(v => v + 1);
+    }, AUTOSAVE_INTERVAL);
+
+    return () => {
+      if (autoSaveRef.current) clearInterval(autoSaveRef.current);
+    };
+  }, [game]);
+
   const handleAction = useCallback((action, params = {}) => {
     game.doAction(action, params);
     forceUpdate();
@@ -59,13 +77,20 @@ export default function GameApp() {
   const handleDismissNotifications = useCallback(() => {
     game.clearNotifications();
     setShowNotifications(false);
-    setPaused(false);
     forceUpdate();
   }, [game, forceUpdate]);
 
   const togglePause = useCallback(() => {
     setPaused(p => !p);
   }, []);
+
+  const handleSave = useCallback(() => {
+    const ok = game.save();
+    setSaveMsg(ok ? '存档成功' : '存档失败');
+    setTimeout(() => setSaveMsg(''), 2000);
+    if (ok) game.addLog('手动存档完成');
+    forceUpdate();
+  }, [game, forceUpdate]);
 
   return (
     <div className="w-full h-screen bg-stone-950 text-stone-100 flex flex-col overflow-hidden">
@@ -93,6 +118,21 @@ export default function GameApp() {
           })}
 
           <div className="flex-1" />
+
+          {/* 存档按钮 */}
+          <button
+            onClick={handleSave}
+            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors relative"
+            title="手动存档"
+          >
+            <Save size={18} />
+            存档
+            {saveMsg && (
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-xs text-green-400 whitespace-nowrap bg-stone-800 px-2 py-0.5 rounded shadow">
+                {saveMsg}
+              </span>
+            )}
+          </button>
 
           {/* 暂停/继续按钮 */}
           <button
@@ -124,7 +164,7 @@ export default function GameApp() {
         </div>
       </div>
 
-      {/* 通知弹窗 */}
+      {/* 通知弹窗（不暂停游戏） */}
       {showNotifications && (
         <NotificationPopup
           notifications={game.notifications}
