@@ -9,7 +9,7 @@ import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
-import { Wheat, Package, User, Pause, Play, Save } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download } from 'lucide-react';
 
 const ROLE_TAB_MAP = {
   farmer: { label: '农田', icon: '🌾' },
@@ -27,9 +27,10 @@ export default function GameApp() {
   const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
   const [activeRoleTab, setActiveRoleTab] = useState(null); // 当多身份时，当前激活的角色子tab
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [pendingNotifs, setPendingNotifs] = useState([]);
   const [paused, setPaused] = useState(false);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [saveLoadDefaultMode, setSaveLoadDefaultMode] = useState('save');
   const [activeEvent, setActiveEvent] = useState(null);
   const timerRef = useRef(null);
   const autoSaveRef = useRef(null);
@@ -60,7 +61,8 @@ export default function GameApp() {
       }
 
       if (normalNotifs.length > 0) {
-        setShowNotifications(true);
+        setPendingNotifs(normalNotifs);
+        g.notifications = g.notifications.filter(n => n.startsWith('event:'));
       }
 
       setVersion(v => v + 1);
@@ -92,12 +94,8 @@ export default function GameApp() {
   }, [forceUpdate]);
 
   const handleDismissNotifications = useCallback(() => {
-    const g = gameRef.current;
-    g.notifications = g.notifications.filter(n => !n.startsWith('event:'));
-    g.clearNotifications();
-    setShowNotifications(false);
-    forceUpdate();
-  }, [forceUpdate]);
+    setPendingNotifs([]);
+  }, []);
 
   const togglePause = useCallback(() => {
     setPaused(p => !p);
@@ -166,12 +164,21 @@ export default function GameApp() {
           <div className="flex-1" />
 
           <button
-            onClick={() => setShowSaveLoad(true)}
+            onClick={() => { setSaveLoadDefaultMode('save'); setShowSaveLoad(true); }}
             className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
-            title="存档管理"
+            title="保存存档"
           >
             <Save size={18} />
             存档
+          </button>
+
+          <button
+            onClick={() => { setSaveLoadDefaultMode('load'); setShowSaveLoad(true); }}
+            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
+            title="读取存档"
+          >
+            <Download size={18} />
+            读档
           </button>
 
           <button
@@ -226,16 +233,15 @@ export default function GameApp() {
         </div>
       </div>
 
-      {showNotifications && (
-        <NotificationPopup
-          notifications={game.notifications.filter(n => !n.startsWith('event:'))}
-          onDismiss={handleDismissNotifications}
-        />
-      )}
+      <NotificationPopup
+        notifications={pendingNotifs}
+        onDismiss={handleDismissNotifications}
+      />
 
       {showSaveLoad && (
         <SaveLoadPanel
           game={game}
+          defaultMode={saveLoadDefaultMode}
           onClose={() => setShowSaveLoad(false)}
           onLoad={handleLoadGame}
         />

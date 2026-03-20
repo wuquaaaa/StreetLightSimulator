@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { Save, Download, X, AlertTriangle } from 'lucide-react';
 import { GameState } from '../engine/GameState';
 
-export default function SaveLoadPanel({ game, onClose, onLoad }) {
+export default function SaveLoadPanel({ game, defaultMode = 'save', onClose, onLoad }) {
   const [slots, setSlots] = useState([]);
   const [confirmSlot, setConfirmSlot] = useState(null); // 覆盖确认
-  const [mode, setMode] = useState('save'); // 'save' | 'load'
+  const [mode, setMode] = useState(defaultMode); // 'save' | 'load'
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -37,6 +37,14 @@ export default function SaveLoadPanel({ game, onClose, onLoad }) {
   };
 
   const handleLoad = (slot) => {
+    const info = slots[slot];
+    if (info && !info.occupied) {
+      // 空栏位 → 新游戏
+      const newGame = new GameState('旅人');
+      onLoad(newGame);
+      onClose();
+      return;
+    }
     const loaded = GameState.load(slot);
     if (loaded) {
       onLoad(loaded);
@@ -110,13 +118,12 @@ export default function SaveLoadPanel({ game, onClose, onLoad }) {
                   </button>
                 ) : (
                   <button onClick={() => handleLoad(slot.slot)}
-                    disabled={!slot.occupied}
                     className={`px-3 py-1.5 text-xs rounded transition-colors ${
                       slot.occupied
                         ? 'bg-blue-800/60 hover:bg-blue-700/60 text-blue-200'
-                        : 'bg-stone-700/30 text-stone-600 cursor-not-allowed'
+                        : 'bg-green-800/60 hover:bg-green-700/60 text-green-200'
                     }`}>
-                    加载
+                    {slot.occupied ? '加载' : '新游戏'}
                   </button>
                 )}
               </div>

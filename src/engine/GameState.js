@@ -63,10 +63,13 @@ export class GameState {
         this.addLog(`季节变化：进入了${this.season}季`);
       }
 
-      // 第10天招工事件
-      if (this.day === 10 && !this.triggeredEvents['day10_recruit']) {
-        this.triggeredEvents['day10_recruit'] = 'pending';
-        this.addNotification('event:day10_recruit');
+      // 每10天招工事件（如果从未接受过）
+      if (this.day >= 10 && this.day % 10 === 0 && this.triggeredEvents['recruit'] !== 'accepted') {
+        // 避免同一天重复触发
+        if (this.triggeredEvents['recruit_last_day'] !== this.day) {
+          this.triggeredEvents['recruit_last_day'] = this.day;
+          this.addNotification('event:recruit');
+        }
       }
 
       // 消耗食物
@@ -173,15 +176,15 @@ export class GameState {
         npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
         this.characters.push(npc);
         this.population++;
-        this.triggeredEvents['day10_recruit'] = 'accepted';
+        this.triggeredEvents['recruit'] = 'accepted';
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
         // 玩家身份变化的选择由UI触发
         result = { success: true, message: `${name}加入了`, npcName: name };
         break;
       }
       case 'recruit_reject':
-        this.triggeredEvents['day10_recruit'] = 'rejected';
-        this.addLog('你拒绝了来访者的请求。');
+        // 拒绝后不设置 'accepted'，下个10天还会来
+        this.addLog('你拒绝了来访者的请求。也许过些天还会有人来。');
         result = { success: true, message: '拒绝了招工请求' };
         break;
       case 'set_player_roles':

@@ -1,29 +1,69 @@
-import { AlertTriangle, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
-export default function NotificationPopup({ notifications, onDismiss }) {
-  if (!notifications || notifications.length === 0) return null;
+/**
+ * Toast式通知：出现后自动渐隐消失，不阻塞游戏
+ */
+function Toast({ message, onDone }) {
+  const [opacity, setOpacity] = useState(0);
+
+  useEffect(() => {
+    // 淡入
+    requestAnimationFrame(() => setOpacity(1));
+    // 停留2秒后开始淡出
+    const fadeTimer = setTimeout(() => setOpacity(0), 2500);
+    // 淡出动画结束后移除
+    const removeTimer = setTimeout(() => onDone(), 3500);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+    };
+  }, [onDone]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-stone-800 border border-amber-700/50 rounded-lg shadow-2xl max-w-md w-full mx-4 p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <AlertTriangle size={18} className="text-amber-400" />
-          <h3 className="text-amber-400 font-bold">通知</h3>
-        </div>
-        <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
-          {notifications.map((msg, i) => (
-            <div key={i} className="text-sm text-stone-300 bg-stone-900/50 rounded p-2">
-              {msg}
-            </div>
-          ))}
-        </div>
-        <button
-          onClick={onDismiss}
-          className="w-full py-2 bg-amber-700 hover:bg-amber-600 text-white text-sm font-bold rounded transition-colors"
-        >
-          知道了
-        </button>
-      </div>
+    <div
+      className="flex items-center gap-2 px-4 py-2.5 bg-stone-800 border border-amber-700/50 rounded-lg shadow-xl text-sm text-stone-200 pointer-events-auto"
+      style={{
+        opacity,
+        transition: 'opacity 0.8s ease-in-out',
+      }}
+    >
+      <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+      <span>{message}</span>
+    </div>
+  );
+}
+
+export default function NotificationPopup({ notifications, onDismiss }) {
+  const [toasts, setToasts] = useState([]);
+
+  // 新通知进来时添加到toasts队列
+  useEffect(() => {
+    if (!notifications || notifications.length === 0) return;
+    const newToasts = notifications.map((msg, i) => ({
+      id: Date.now() + i,
+      message: msg,
+    }));
+    setToasts(prev => [...prev, ...newToasts]);
+    // 通知已被消费，立即清除源数据
+    onDismiss();
+  }, [notifications, onDismiss]);
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed top-16 right-4 z-50 flex flex-col gap-2 pointer-events-none max-h-80 overflow-hidden">
+      {toasts.slice(-5).map(toast => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          onDone={() => removeToast(toast.id)}
+        />
+      ))}
     </div>
   );
 }

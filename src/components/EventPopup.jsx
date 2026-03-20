@@ -38,7 +38,7 @@ function RecruitEvent({ onAccept, onReject }) {
 }
 
 export default function EventPopup({ eventType, onAction }) {
-  if (eventType === 'day10_recruit') {
+  if (eventType === 'recruit' || eventType === 'day10_recruit') {
     return <RecruitEvent
       onAccept={() => {
         onAction('recruit_accept');
