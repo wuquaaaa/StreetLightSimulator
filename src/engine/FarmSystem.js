@@ -144,6 +144,7 @@ export class FarmSystem {
   water(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
+    // 任何状态都可以浇水
     plot.waterLevel = Math.min(100, plot.waterLevel + 30);
     character.gainKnowledge('farming', 0.5);
     return { success: true, message: '浇水完成' };
@@ -152,6 +153,7 @@ export class FarmSystem {
   fertilize(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
+    // 任何状态都可以施肥
     if (plot.fertility >= 100) {
       return { success: false, message: '肥力已满' };
     }
@@ -214,7 +216,21 @@ export class FarmSystem {
     const actualYield = Math.max(1, Math.floor(rawAmount * yieldMod));
     const bonusYield = isHighQuality ? Math.ceil(actualYield * 0.3) : 0;
     const totalYield = actualYield + bonusYield;
-    const seedBack = Math.random() < 0.6 ? crop.seedCost : 0;
+
+    // 种子掉落：根据产量，产量低大概率1颗，产量高有概率2颗
+    const baseYield = crop.baseYield || 5;
+    const yieldRatio = totalYield / baseYield; // <1 减产, >1 增产
+    let seedBack;
+    if (yieldRatio >= 1.2) {
+      // 高产：60%概率2颗，40%概率1颗
+      seedBack = Math.random() < 0.6 ? 2 : 1;
+    } else if (yieldRatio >= 0.8) {
+      // 正常：20%概率2颗，80%概率1颗
+      seedBack = Math.random() < 0.2 ? 2 : 1;
+    } else {
+      // 低产：90%概率1颗，10%概率2颗
+      seedBack = Math.random() < 0.1 ? 2 : 1;
+    }
 
     const yieldPct = Math.round((yieldMod - 1) * 100);
 
@@ -235,12 +251,12 @@ export class FarmSystem {
     if (yieldPct < -5) message += `（减产 ${Math.abs(yieldPct)}%）`;
     if (yieldPct > 5) message += `（增产 ${yieldPct}%）`;
     if (bonusYield > 0) message += `（丰收！+${bonusYield}）`;
-    if (seedBack > 0) message += `，获得${seedBack}个${crop.seedName}`;
+    message += `，获得${seedBack}颗${crop.seedName}`;
 
     return {
       success: true, message, isHighQuality,
       yield: { itemId: crop.harvestItem, category: crop.category, amount: totalYield, name: crop.name },
-      seedBack: seedBack > 0 ? { itemId: crop.seedId, amount: seedBack, name: crop.seedName } : null,
+      seedBack: { itemId: crop.seedId, amount: seedBack, name: crop.seedName },
     };
   }
 
@@ -252,10 +268,8 @@ export class FarmSystem {
     for (let i = 0; i < this.plots.length; i++) {
       const plot = this.plots[i];
 
-      // --- 所有非空地状态：水分自然蒸发 ---
-      if (plot.state !== FIELD_STATE.EMPTY) {
-        plot.waterLevel = Math.max(0, plot.waterLevel - 1.5);
-      }
+      // --- 水分自然蒸发（所有状态） ---
+      plot.waterLevel = Math.max(0, plot.waterLevel - 1.5);
 
       // --- 有作物的农田：肥力流失 ---
       if (plot.state === FIELD_STATE.PLANTED || plot.state === FIELD_STATE.GROWING) {
@@ -268,8 +282,8 @@ export class FarmSystem {
         plot.growthProgress = 1;
       }
 
-      // --- 杂草积累（所有非空地状态）---
-      if (plot.state !== FIELD_STATE.EMPTY && !plot.hasWeeds) {
+      // --- 杂草积累（所有状态都会长杂草）---
+      if (!plot.hasWeeds) {
         const weedFertMod = 0.5 + (plot.fertility / 100) * 0.8;
         const weedWaterMod = 0.5 + (plot.waterLevel / 100) * 0.8;
         plot.weedGrowth += 2 * weedFertMod * weedWaterMod;
@@ -328,11 +342,13 @@ export class FarmSystem {
           continue;
         }
 
-        // === 病虫害随机出现 ===
+        // === 病虫害随机出现（立即造成减产） ===
         if (!plot.hasPest && Math.random() < 0.008) {
           plot.hasPest = true;
           plot.pestSeverity = 5;
           plot.pestClicks = 3 + Math.floor(Math.random() * 5);
+          // 出现即刻永久减产5%
+          plot.cropYieldMod = Math.max(0.1, plot.cropYieldMod - 0.05);
           events.push({ type: 'pest', plotId: plot.id });
         }
 
@@ -370,6 +386,8 @@ export class FarmSystem {
           neighbor.hasPest = true;
           neighbor.pestSeverity = 5;
           neighbor.pestClicks = 3 + Math.floor(Math.random() * 4);
+          // 传染也立即减产
+          neighbor.cropYieldMod = Math.max(0.1, neighbor.cropYieldMod - 0.05);
           events.push({ type: 'pest_spread', plotId: neighbor.id, fromPlotId: plot.id });
         }
       }

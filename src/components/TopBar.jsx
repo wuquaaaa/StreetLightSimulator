@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Wheat, Sprout, Users } from 'lucide-react';
+import { Wheat, Users } from 'lucide-react';
 
 /**
  * 日月东升西落动画组件
@@ -104,7 +104,6 @@ function FoodTooltip({ game }) {
 export default function TopBar({ game }) {
   const [showFoodTip, setShowFoodTip] = useState(false);
   const wheatCount = game.warehouse.getItemAmount('food', 'wheat');
-  const seedCount = game.warehouse.getItemAmount('seed', 'wheat_seed');
 
   return (
     <div className="h-14 bg-stone-900 border-b border-amber-800/40 px-4 flex items-center justify-between shrink-0">
@@ -142,12 +141,6 @@ export default function TopBar({ game }) {
             {wheatCount}
           </span>
           {showFoodTip && <FoodTooltip game={game} />}
-        </div>
-
-        {/* 种子 */}
-        <div className="flex items-center gap-1.5" title="小麦种子">
-          <Sprout size={14} className="text-green-400" />
-          <span className="text-stone-300">{seedCount}</span>
         </div>
       </div>
     </div>

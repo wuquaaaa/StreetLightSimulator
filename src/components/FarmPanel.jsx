@@ -67,8 +67,7 @@ function SeedSelectPopup({ warehouse, onSelect, onClose }) {
   );
 }
 
-// 统一的进度条行：label | bar | value | [button slot]
-// button slot 始终占位（w-16），保证进度条对齐
+// 统一进度条行：所有按钮统一尺寸 px-2 py-1 text-xs
 function BarRow({ label, value, max, color, warning, btn }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
@@ -80,7 +79,7 @@ function BarRow({ label, value, max, color, warning, btn }) {
       <span className={`text-xs w-6 text-right shrink-0 tabular-nums ${warning ? 'text-orange-400' : 'text-stone-500'}`}>
         {typeof value === 'number' ? Math.floor(value) : value}
       </span>
-      <div className="w-16 shrink-0 flex justify-end">
+      <div className="w-14 shrink-0 flex justify-end">
         {btn ? (
           <button
             onClick={btn.onClick}
@@ -100,9 +99,7 @@ function PlotCard({ plot, onAction, onPlant }) {
   const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
   const crop = plot.getCropDef();
   const yieldPct = plot.getYieldPercent();
-  const isGrowing = plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED;
-  const isActive = isGrowing || plot.state === FIELD_STATE.READY;
-  const notEmpty = plot.state !== FIELD_STATE.EMPTY;
+  const isActive = plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED || plot.state === FIELD_STATE.READY;
 
   const handleRename = () => {
     onAction('rename_plot', { plotId: plot.id, newName: editName });
@@ -111,7 +108,7 @@ function PlotCard({ plot, onAction, onPlant }) {
 
   return (
     <div className="rounded-lg border border-stone-700 p-3 bg-stone-800/50 h-64 flex flex-col">
-      {/* 头部：名称 + 状态 */}
+      {/* 头部 */}
       <div className="flex items-center justify-between mb-1.5 h-6">
         <div className="flex items-center gap-1.5 min-w-0">
           {editing ? (
@@ -147,22 +144,19 @@ function PlotCard({ plot, onAction, onPlant }) {
 
       {/* 进度条区域 */}
       <div className="flex-1 space-y-0.5 overflow-hidden">
-        {/* === 增/减产条 === 基准线在正中间 */}
+        {/* 产量条：基准线正中间 */}
         <div className="flex items-center gap-1.5 h-7">
           <span className={`text-xs w-8 shrink-0 ${yieldPct < 0 ? 'text-red-400' : yieldPct > 0 ? 'text-green-400' : 'text-stone-500'}`}>
             产量
           </span>
           <div className="flex-1 h-1.5 bg-stone-700 rounded-full overflow-hidden relative">
-            {/* 中间基准线 */}
             <div className="absolute left-1/2 top-0 w-px h-full bg-stone-400 z-10" style={{ transform: 'translateX(-0.5px)' }} />
             {yieldPct > 0 ? (
-              /* 增产：从中间往右延伸绿色 */
               <div
                 className="absolute h-full bg-green-500 rounded-r-full"
                 style={{ left: '50%', width: `${Math.min(50, yieldPct / 2)}%` }}
               />
             ) : yieldPct < 0 ? (
-              /* 减产：从中间往左延伸红色 */
               <div
                 className="absolute h-full bg-red-500 rounded-l-full"
                 style={{ right: '50%', width: `${Math.min(50, Math.abs(yieldPct) / 2)}%` }}
@@ -172,62 +166,62 @@ function PlotCard({ plot, onAction, onPlant }) {
           <span className={`text-xs w-10 text-right shrink-0 tabular-nums ${yieldPct < 0 ? 'text-red-400' : yieldPct > 0 ? 'text-green-400' : 'text-stone-500'}`}>
             {yieldPct > 0 ? '+' : ''}{yieldPct}%
           </span>
-          <div className="w-16 shrink-0" />
+          <div className="w-14 shrink-0" />
         </div>
 
-        {/* === 肥力 + 施肥 === */}
+        {/* 肥力 + 施肥（始终可用） */}
         <BarRow
           label="肥力"
           value={plot.fertility}
           max={100}
           color={plot.fertility < 60 ? '#f59e0b' : '#16a34a'}
           warning={plot.fertility < 60}
-          btn={notEmpty ? {
+          btn={{
             onClick: () => onAction('fertilize', { plotId: plot.id }),
             className: 'bg-green-800/60 hover:bg-green-700/60 text-green-300',
             icon: <FlaskConical size={12} />,
             label: '施肥',
-          } : null}
+          }}
         />
 
-        {/* === 水分 + 浇水（始终显示） === */}
+        {/* 水分 + 浇水（始终可用） */}
         <BarRow
           label="水分"
           value={plot.waterLevel}
           max={100}
           color={plot.waterLevel < 30 ? '#ef4444' : plot.waterLevel < 60 ? '#f59e0b' : '#3b82f6'}
           warning={plot.waterLevel < 60}
-          btn={notEmpty ? {
+          btn={{
             onClick: () => onAction('water', { plotId: plot.id }),
             className: 'bg-blue-800/60 hover:bg-blue-700/60 text-blue-300',
             icon: <Droplets size={12} />,
             label: '浇水',
-          } : null}
+          }}
         />
 
-        {/* === 生长进度 === */}
+        {/* 生长进度 */}
         {isActive && (
           <BarRow label="生长" value={plot.growthProgress} max={100} color="#22c55e" />
         )}
 
-        {/* === 杂草 + 除草（始终显示） === */}
+        {/* 杂草 + 除草（始终可用） */}
         <BarRow
           label="杂草"
           value={plot.hasWeeds ? plot.weedLevel : plot.weedGrowth}
           max={plot.hasWeeds ? 150 : 100}
           color={plot.hasWeeds ? '#84cc16' : '#4d7c0f'}
           warning={plot.weedGrowth > 40 || plot.hasWeeds}
-          btn={notEmpty ? {
+          btn={{
             onClick: () => onAction('remove_weeds', { plotId: plot.id }),
             className: plot.hasWeeds
               ? 'bg-lime-700/60 hover:bg-lime-600/60 text-lime-200'
               : 'bg-stone-700/60 hover:bg-stone-600/60 text-stone-400',
             icon: <Leaf size={12} />,
-            label: plot.hasWeeds ? `除草(${plot.weedClicks})` : '除草',
-          } : null}
+            label: '除草',
+          }}
         />
 
-        {/* === 病虫害 + 除虫 === */}
+        {/* 病虫害 + 除虫 */}
         {plot.hasPest && (
           <BarRow
             label="虫害"
@@ -239,13 +233,13 @@ function PlotCard({ plot, onAction, onPlant }) {
               onClick: () => onAction('remove_pest', { plotId: plot.id }),
               className: 'bg-red-800/60 hover:bg-red-700/60 text-red-200',
               icon: <Bug size={12} />,
-              label: `除虫(${plot.pestClicks})`,
+              label: '除虫',
             }}
           />
         )}
       </div>
 
-      {/* 底部操作按钮 */}
+      {/* 底部操作 */}
       <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-stone-700/50">
         {(plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.WITHERED) && (
           <button
@@ -275,7 +269,7 @@ function PlotCard({ plot, onAction, onPlant }) {
         )}
 
         {plot.state === FIELD_STATE.READY && (
-          <div className="text-xs text-yellow-400 ml-auto">✨ 已成熟</div>
+          <span className="text-xs text-yellow-400 ml-auto">✨ 已成熟</span>
         )}
 
         {plot.cropYieldMod < 0.99 && plot.cropId && (
