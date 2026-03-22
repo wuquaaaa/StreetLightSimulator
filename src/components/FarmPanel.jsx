@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Droplets, Scissors, Shovel, Sprout, Bug, Leaf, FlaskConical, X, Pencil, Check, LayoutGrid, List } from 'lucide-react';
+import { Droplets, Scissors, Shovel, Sprout, Bug, Leaf, FlaskConical, X, Pencil, Check } from 'lucide-react';
 import { FIELD_STATE } from '../engine/FarmSystem';
 import { CROPS } from '../data/crops';
 
@@ -61,89 +61,8 @@ function MiniBar({ value, max, color }) {
   );
 }
 
-// ===== 紧凑模式卡片 =====
-function CompactPlotCard({ plot, onAction, onPlant }) {
-  const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
-  const crop = plot.getCropDef();
-  const isGrowing = plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED;
-  const isReady = plot.state === FIELD_STATE.READY;
-  const isEmpty = plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.WITHERED;
-  const isPlowed = plot.state === FIELD_STATE.PLOWED;
-  const yieldPct = plot.getYieldPercent();
-
-  // 判断是否有需要关注的问题
-  const hasIssue = plot.waterLevel < 30 || plot.hasPest || plot.weedGrowth > 50;
-
-  return (
-    <div className={`rounded-lg border p-2 bg-stone-800/50 ${
-      isReady ? 'border-yellow-600/50' : isGrowing ? 'border-green-700/50' : hasIssue ? 'border-red-700/30' : 'border-stone-700'
-    }`}>
-      <div className="flex items-center justify-between gap-2">
-        {/* 左侧：名字+状态 */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          {crop && <span className="text-sm">{crop.icon}</span>}
-          <span className="text-stone-300 text-xs font-medium truncate">{plot.name}</span>
-          <span className={`text-[10px] ${stateInfo.color}`}>{isGrowing ? `${Math.floor(plot.growthProgress)}%` : stateInfo.text}</span>
-          {plot.hasPest && <Bug size={10} className="text-red-400" />}
-          {yieldPct !== 0 && plot.cropId && (
-            <span className={`text-[9px] ${yieldPct < 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {yieldPct > 0 ? '+' : ''}{yieldPct}%
-            </span>
-          )}
-        </div>
-
-        {/* 右侧：操作按钮 */}
-        <div className="flex items-center gap-1 shrink-0">
-          {isEmpty && (
-            <button onClick={() => onAction('plow', { plotId: plot.id })}
-              className="px-1.5 py-0.5 text-[10px] bg-amber-800/60 hover:bg-amber-700/60 text-amber-200 rounded transition-colors">
-              翻地
-            </button>
-          )}
-          {isPlowed && (
-            <button onClick={() => onPlant(plot.id)}
-              className="px-1.5 py-0.5 text-[10px] bg-green-800/60 hover:bg-green-700/60 text-green-200 rounded transition-colors">
-              播种
-            </button>
-          )}
-          {isReady && (
-            <button onClick={() => onAction('harvest', { plotId: plot.id })}
-              className="px-1.5 py-0.5 text-[10px] bg-yellow-700/60 hover:bg-yellow-600/60 text-yellow-200 rounded transition-colors">
-              收获
-            </button>
-          )}
-          {plot.waterLevel < 50 && (
-            <button onClick={() => onAction('water', { plotId: plot.id })}
-              className="px-1 py-0.5 text-[10px] bg-blue-800/60 hover:bg-blue-700/60 text-blue-300 rounded transition-colors" title="浇水">
-              <Droplets size={10} />
-            </button>
-          )}
-          {plot.hasPest && (
-            <button onClick={() => onAction('remove_pest', { plotId: plot.id })}
-              className="px-1 py-0.5 text-[10px] bg-red-800/60 hover:bg-red-700/60 text-red-200 rounded transition-colors" title="除虫">
-              <Bug size={10} />
-            </button>
-          )}
-          {plot.weedGrowth > 40 && (
-            <button onClick={() => onAction('remove_weeds', { plotId: plot.id })}
-              className="px-1 py-0.5 text-[10px] bg-lime-700/60 hover:bg-lime-600/60 text-lime-200 rounded transition-colors" title="除草">
-              <Leaf size={10} />
-            </button>
-          )}
-          {plot.fertility < 50 && (
-            <button onClick={() => onAction('fertilize', { plotId: plot.id })}
-              className="px-1 py-0.5 text-[10px] bg-green-800/60 hover:bg-green-700/60 text-green-300 rounded transition-colors" title="施肥">
-              <FlaskConical size={10} />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ===== 详细模式卡片（原PlotCard）=====
-function DetailPlotCard({ plot, onAction, onPlant }) {
+// 详细模式卡片（农民视角，带进度条和名称）
+function PlotCard({ plot, onAction, onPlant }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
   const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
@@ -264,14 +183,12 @@ function DetailPlotCard({ plot, onAction, onPlant }) {
 
 export default function FarmPanel({ game, onAction }) {
   const [plantingPlotId, setPlantingPlotId] = useState(null);
-  const [compactView, setCompactView] = useState(false);
   const handlePlant = (plotId) => setPlantingPlotId(plotId);
   const handleSeedSelect = (cropId) => {
     if (plantingPlotId) { onAction('plant', { plotId: plantingPlotId, cropId }); setPlantingPlotId(null); }
   };
 
   const plots = game.farm.plots;
-  const hasMany = plots.length > 4;
 
   return (
     <div>
@@ -279,19 +196,6 @@ export default function FarmPanel({ game, onAction }) {
         <h2 className="text-lg font-bold text-amber-400">🌾 农田</h2>
         <div className="flex items-center gap-3">
           <span className="text-xs text-stone-400">{plots.length} 块农田</span>
-          {/* 视图切换 */}
-          <div className="flex items-center gap-1 bg-stone-800 rounded p-0.5">
-            <button onClick={() => setCompactView(false)}
-              className={`p-1 rounded transition-colors ${!compactView ? 'bg-stone-600 text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
-              title="详细视图">
-              <List size={14} />
-            </button>
-            <button onClick={() => setCompactView(true)}
-              className={`p-1 rounded transition-colors ${compactView ? 'bg-stone-600 text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
-              title="紧凑视图">
-              <LayoutGrid size={14} />
-            </button>
-          </div>
           <button onClick={() => onAction('expand_farm')}
             className="px-3 py-1.5 text-xs bg-stone-700 hover:bg-stone-600 text-stone-200 rounded transition-colors">
             + 开垦新田
@@ -299,20 +203,12 @@ export default function FarmPanel({ game, onAction }) {
         </div>
       </div>
 
-      {/* 紧凑模式 */}
-      {(compactView || hasMany) && compactView !== false ? (
-        <div className="space-y-1.5">
-          {plots.map(plot => (
-            <CompactPlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {plots.map(plot => (
-            <DetailPlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} />
-          ))}
-        </div>
-      )}
+      {/* 详细视图（农民视角，带进度条和名称） */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {plots.map(plot => (
+          <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} />
+        ))}
+      </div>
 
       {/* 开垦中 */}
       {game.farm.expandQueue.length > 0 && (

@@ -114,7 +114,7 @@ function RoleDropdown({ player, onToggleRole, onClose }) {
 
   return (
     <div ref={ref} className="absolute top-full left-0 mt-2 bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-3 w-56 z-50">
-      <div className="text-xs text-stone-400 mb-2">点击切换身份（单个时切换，多个时可多选）</div>
+      <div className="text-xs text-stone-400 mb-2">点击添加/移除身份（可多选，至少保留一个）</div>
       <div className="space-y-1.5">
         {unlockedRoles.map(r => {
           const info = ROLE_MAP[r] || { name: r, icon: '👤', color: 'text-stone-400', bg: 'bg-stone-700/30 border-stone-600/40' };
@@ -148,16 +148,12 @@ export default function TopBar({ game, onAction }) {
     const current = [...game.player.roles];
     const idx = current.indexOf(role);
     if (idx >= 0) {
-      // 只有一个身份时，不能移除（但可以通过点击其他身份来切换）
+      // 至少保留一个身份
       if (current.length <= 1) return;
       current.splice(idx, 1);
     } else {
-      // 如果只有一个身份，切换为新身份（替换）
-      if (current.length === 1) {
-        current.splice(0, 1, role); // 替换唯一的身份
-      } else {
-        current.push(role);
-      }
+      // 添加新身份（支持多选）
+      current.push(role);
     }
     if (onAction) onAction('set_player_roles', { roles: current });
   };

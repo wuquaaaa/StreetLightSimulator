@@ -228,7 +228,22 @@ export class GameState {
       case 'set_target_plots':
         if (typeof params.count === 'number' && params.count >= 0) {
           this.farm.targetPlotCount = params.count;
-          result = { success: true, message: `目标农田数设为 ${params.count}` };
+          // 如果目标低于当前农田数，自动删除空闲农田
+          let removed = 0;
+          while (this.farm.plots.length > params.count && this.farm.plots.length > 1) {
+            // 优先删除空地/枯萎/已翻地的，从后往前找
+            const removableIdx = [...this.farm.plots].reverse().findIndex(p =>
+              p.state === 'empty' || p.state === 'withered' || p.state === 'plowed'
+            );
+            if (removableIdx === -1) break; // 没有可删的（全在种植/成熟）
+            const actualIdx = this.farm.plots.length - 1 - removableIdx;
+            const removedPlot = this.farm.plots[actualIdx];
+            this.farm.plots.splice(actualIdx, 1);
+            removed++;
+          }
+          let msg = `目标农田数设为 ${params.count}`;
+          if (removed > 0) msg += `，已拆除 ${removed} 块空闲农田`;
+          result = { success: true, message: msg };
         } else {
           result = { success: false, message: '无效的目标数' };
         }
