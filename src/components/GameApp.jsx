@@ -141,12 +141,13 @@ export default function GameApp() {
   }, []);
 
   // 计算农田tab的角色子页签
-  const farmRoles = game.player.roles.filter(r => r === 'farmer' || r === 'farmer_leader');
-  const showFarmSubTabs = farmRoles.length > 1;
-  const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
+  const hasFarmerLeader = game.player.roles.includes('farmer_leader');
+  const farmSubTabs = hasFarmerLeader ? ['farmer', 'farmer_leader'] : ['farmer'];
+  const showFarmSubTabs = farmSubTabs.length > 1;
+  const currentRoleTab = (activeRoleTab && farmSubTabs.includes(activeRoleTab)) ? activeRoleTab : 'farmer';
 
   const renderFarmContent = () => {
-    // 有farmer身份 → 详细视图(FarmPanel)；仅farmer_leader → 紧凑管理视图(FarmLeaderPanel)
+    // 管理子标签 → FarmLeaderPanel；默认始终 → FarmPanel（带进度条）
     if (currentRoleTab === 'farmer_leader') {
       return <FarmLeaderPanel game={game} onAction={handleAction} />;
     }
@@ -233,7 +234,7 @@ export default function GameApp() {
           {/* 多角色子tab */}
           {activeTab === 'farm' && showFarmSubTabs && (
             <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
-              {farmRoles.map(r => {
+              {farmSubTabs.map(r => {
                 const info = ROLE_TAB_MAP[r] || { label: r, icon: '👤' };
                 const active = currentRoleTab === r;
                 return (
