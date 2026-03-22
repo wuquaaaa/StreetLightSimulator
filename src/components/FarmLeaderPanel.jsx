@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Minus, UserPlus } from 'lucide-react';
+import { Plus, Minus, UserPlus, Trash2 } from 'lucide-react';
 import { FIELD_STATE } from '../engine/FarmSystem';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
@@ -133,7 +133,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
     if (onAction) onAction('unassign_plot', { plotId, characterId: charId });
   };
   const handleTargetChange = (delta) => {
-    const newCount = Math.max(totalPlots, targetCount + delta);
+    const newCount = Math.max(0, targetCount + delta);
     if (onAction) onAction('set_target_plots', { count: newCount });
   };
   const handleRecruit = () => {
@@ -177,7 +177,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
             <div className="flex items-center gap-2">
               <span className="text-sm text-stone-400">目标</span>
               <button onClick={() => handleTargetChange(-1)}
-                disabled={targetCount <= totalPlots}
+                disabled={targetCount <= 0}
                 className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center disabled:opacity-30 transition-colors">
                 <Minus size={14} />
               </button>
@@ -211,10 +211,19 @@ export default function FarmLeaderPanel({ game, onAction }) {
             <div className="mt-4 p-3 bg-stone-900/50 rounded-lg border border-stone-700/50">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold text-stone-200">{selectedPlotData.name}</span>
-                <span className="text-xs text-stone-500">
-                  {STATE_COLORS[selectedPlotData.state]?.label || selectedPlotData.state}
-                  {selectedPlotData.state === FIELD_STATE.GROWING && ` ${Math.floor(selectedPlotData.growthProgress)}%`}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-stone-500">
+                    {STATE_COLORS[selectedPlotData.state]?.label || selectedPlotData.state}
+                    {selectedPlotData.state === FIELD_STATE.GROWING && ` ${Math.floor(selectedPlotData.growthProgress)}%`}
+                  </span>
+                  <button
+                    onClick={() => { if (onAction) onAction('remove_plot', { plotId: selectedPlotData.id }); setSelectedPlot(null); }}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-red-900/40 hover:bg-red-800/50 text-red-400 rounded transition-colors"
+                    title="拆除农田"
+                  >
+                    <Trash2 size={11} /> 拆除
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-4 gap-2 text-xs mb-3">
                 <div><span className="text-stone-500">水分</span> <span className={selectedPlotData.waterLevel < 40 ? 'text-red-400' : 'text-blue-400'}>{Math.floor(selectedPlotData.waterLevel)}</span></div>

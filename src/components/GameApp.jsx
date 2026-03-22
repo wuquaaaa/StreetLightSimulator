@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState } from '../engine/GameState';
+import { sfxForAction, sfxTab, sfxSave, sfxNotify, toggleBGM, isBGMPlaying, sfxClick } from '../engine/AudioSystem';
 import TopBar from './TopBar';
 import FarmPanel from './FarmPanel';
 import FarmLeaderPanel from './FarmLeaderPanel';
@@ -9,7 +10,7 @@ import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
-import { Wheat, Package, User, Pause, Play, Save, Download } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music } from 'lucide-react';
 
 const ROLE_TAB_MAP = {
   farmer: { label: '农田', icon: '🌾' },
@@ -26,18 +27,29 @@ export default function GameApp() {
   });
   const [, setVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('farm');
-  const [activeRoleTab, setActiveRoleTab] = useState(null); // 当多身份时，当前激活的角色子tab
+  const [activeRoleTab, setActiveRoleTab] = useState(null);
   const [pendingNotifs, setPendingNotifs] = useState([]);
   const [paused, setPaused] = useState(false);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [saveLoadDefaultMode, setSaveLoadDefaultMode] = useState('save');
   const [activeEvent, setActiveEvent] = useState(null);
+  const [bgmOn, setBgmOn] = useState(false);
   const timerRef = useRef(null);
   const autoSaveRef = useRef(null);
   const gameRef = useRef(game);
   gameRef.current = game;
 
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
+
+  // 全局按钮点击音效：所有 button 点击都播放 sfxClick
+  useEffect(() => {
+    const handler = (e) => {
+      const btn = e.target.closest('button');
+      if (btn) sfxClick();
+    };
+    document.addEventListener('click', handler, true); // capture phase
+    return () => document.removeEventListener('click', handler, true);
+  }, []);
 
   // 定时器驱动时间流逝
   useEffect(() => {
@@ -61,6 +73,7 @@ export default function GameApp() {
       }
 
       if (normalNotifs.length > 0) {
+        sfxNotify();
         setPendingNotifs(normalNotifs);
         g.notifications = g.notifications.filter(n => n.startsWith('event:'));
       }
@@ -89,6 +102,7 @@ export default function GameApp() {
 
   const handleAction = useCallback((action, params = {}) => {
     const g = gameRef.current;
+    sfxForAction(action);
     g.doAction(action, params);
     forceUpdate();
   }, [forceUpdate]);
@@ -98,32 +112,38 @@ export default function GameApp() {
   }, []);
 
   const togglePause = useCallback(() => {
+    sfxClick();
     setPaused(p => !p);
   }, []);
 
   const handleEventAction = useCallback((action, params = {}) => {
     if (action === 'dismiss_event') {
+      sfxClick();
       setActiveEvent(null);
       return;
     }
     const g = gameRef.current;
+    sfxForAction(action);
     g.doAction(action, params);
     forceUpdate();
   }, [forceUpdate]);
 
   const handleLoadGame = useCallback((loadedGame) => {
+    sfxSave();
     setGame(loadedGame);
     gameRef.current = loadedGame;
     forceUpdate();
   }, [forceUpdate]);
 
-  // 计算农田tab的角色子页签
+  const handleToggleBGM = useCallback(() => {
+    toggleBGM();
+    setBgmOn(isBGMPlaying());
+  }, []);
+
+  // 计算农田tab的角色子页签（只要有farmer或farmer_leader身份就显示对应tab）
   const farmRoles = game.player.roles.filter(r => r === 'farmer' || r === 'farmer_leader');
   const hasMultiFarmRoles = farmRoles.length > 1;
-  // 确定当前有效的角色子tab
-  const currentRoleTab = hasMultiFarmRoles
-    ? (activeRoleTab && farmRoles.includes(activeRoleTab) ? activeRoleTab : farmRoles[0])
-    : farmRoles[0] || 'farmer';
+  const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
 
   const renderFarmContent = () => {
     if (currentRoleTab === 'farmer_leader') {
@@ -148,7 +168,7 @@ export default function GameApp() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => { sfxTab(); setActiveTab(tab.id); }}
                 className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
                   activeTab === tab.id
                     ? 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500'
@@ -163,8 +183,20 @@ export default function GameApp() {
 
           <div className="flex-1" />
 
+          {/* BGM 开关 */}
           <button
-            onClick={() => { setSaveLoadDefaultMode('save'); setShowSaveLoad(true); }}
+            onClick={handleToggleBGM}
+            className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
+              bgmOn ? 'text-amber-400 hover:bg-stone-800' : 'text-stone-500 hover:bg-stone-800 hover:text-stone-300'
+            }`}
+            title={bgmOn ? '关闭音乐' : '播放音乐'}
+          >
+            <Music size={18} />
+            {bgmOn ? '音乐开' : '音乐'}
+          </button>
+
+          <button
+            onClick={() => { sfxClick(); setSaveLoadDefaultMode('save'); setShowSaveLoad(true); }}
             className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
             title="保存存档"
           >
@@ -173,7 +205,7 @@ export default function GameApp() {
           </button>
 
           <button
-            onClick={() => { setSaveLoadDefaultMode('load'); setShowSaveLoad(true); }}
+            onClick={() => { sfxClick(); setSaveLoadDefaultMode('load'); setShowSaveLoad(true); }}
             className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
             title="读取存档"
           >
@@ -197,7 +229,7 @@ export default function GameApp() {
 
         {/* 主内容区 */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* 多角色子tab（仅农田页签且有多个农田相关角色时显示） */}
+          {/* 多角色子tab */}
           {activeTab === 'farm' && hasMultiFarmRoles && (
             <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
               {farmRoles.map(r => {
@@ -206,7 +238,7 @@ export default function GameApp() {
                 return (
                   <button
                     key={r}
-                    onClick={() => setActiveRoleTab(r)}
+                    onClick={() => { sfxTab(); setActiveRoleTab(r); }}
                     className={`px-4 py-2 text-sm rounded-t-lg transition-colors ${
                       active
                         ? 'bg-stone-800 text-amber-400 border-t border-x border-amber-700/30'

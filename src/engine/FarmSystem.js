@@ -61,7 +61,8 @@ export class FarmPlot {
   }
 
   getYieldModifier() {
-    return this.cropYieldMod * this.getFertilityModifier();
+    // 产量只由 cropYieldMod 决定（肥力通过每日修正间接影响 cropYieldMod）
+    return this.cropYieldMod;
   }
 
   getYieldPercent() {
@@ -229,16 +230,16 @@ export class FarmSystem {
     const bonusYield = isHighQuality ? Math.ceil(actualYield * 0.3) : 0;
     const totalYield = actualYield + bonusYield;
 
-    // 种子掉落：根据产量
+    // 种子掉落：根据产量，保证种子数量可持续
     const baseYield = crop.baseYield || 5;
     const yieldRatio = totalYield / baseYield;
     let seedBack;
     if (yieldRatio >= 1.2) {
-      seedBack = Math.random() < 0.6 ? 2 : 1;
+      seedBack = Math.random() < 0.5 ? 3 : 2;
     } else if (yieldRatio >= 0.8) {
-      seedBack = Math.random() < 0.2 ? 2 : 1;
+      seedBack = Math.random() < 0.4 ? 3 : 2;
     } else {
-      seedBack = Math.random() < 0.1 ? 2 : 1;
+      seedBack = Math.random() < 0.3 ? 2 : 1;
     }
 
     const yieldPct = Math.round((yieldMod - 1) * 100);
@@ -394,6 +395,24 @@ export class FarmSystem {
     }
 
     return events;
+  }
+
+  removePlot(plotId) {
+    if (this.plots.length <= 1) return { success: false, message: '至少保留一块农田' };
+    const idx = this.plots.findIndex(p => p.id === plotId);
+    if (idx === -1) return { success: false, message: '找不到农田' };
+    const plot = this.plots[idx];
+    if (plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED) {
+      return { success: false, message: '正在种植的农田不能拆除' };
+    }
+    if (plot.state === FIELD_STATE.READY) {
+      return { success: false, message: '请先收获再拆除' };
+    }
+    this.plots.splice(idx, 1);
+    if (this.targetPlotCount > this.plots.length) {
+      this.targetPlotCount = this.plots.length;
+    }
+    return { success: true, message: `已拆除 ${plot.name}` };
   }
 
   expandFarm() {

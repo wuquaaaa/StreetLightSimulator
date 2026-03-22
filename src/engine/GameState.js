@@ -171,14 +171,18 @@ export class GameState {
       case 'harvest':
         result = this.farm.harvest(params.plotId, this.player);
         if (result.success && result.yield) {
+          // 优先存入种子（确保种子不会因仓库满而丢失）
+          if (result.seedBack) {
+            const seedResult = this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
+            if (seedResult.overflow > 0) {
+              this.addLog(`仓库满了！${seedResult.overflow}颗${result.seedBack.name}丢失`);
+            }
+          }
           const storeResult = this.warehouse.addItem(
             result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
           );
           if (storeResult.overflow > 0) {
             this.addLog(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
-          }
-          if (result.seedBack) {
-            this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
           }
           // 收获增加心情
           this.player.changeMood(3);
@@ -186,6 +190,9 @@ export class GameState {
         break;
       case 'expand_farm':
         result = this.farm.expandFarm();
+        break;
+      case 'remove_plot':
+        result = this.farm.removePlot(params.plotId);
         break;
       case 'upgrade_common':
         result = this.warehouse.upgradeCommon();
@@ -219,11 +226,11 @@ export class GameState {
         result = this.farm.unassignPlot(params.plotId, params.characterId);
         break;
       case 'set_target_plots':
-        if (typeof params.count === 'number' && params.count >= this.farm.plots.length) {
+        if (typeof params.count === 'number' && params.count >= 0) {
           this.farm.targetPlotCount = params.count;
           result = { success: true, message: `目标农田数设为 ${params.count}` };
         } else {
-          result = { success: false, message: '目标数不能小于当前农田数' };
+          result = { success: false, message: '无效的目标数' };
         }
         break;
       case 'leader_recruit': {
@@ -308,10 +315,11 @@ export class GameState {
       if (plot.state === 'ready') {
         const result = this.farm.harvest(plot.id, npc);
         if (result.success && result.yield) {
-          this.warehouse.addItem(result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount);
+          // 优先存入种子
           if (result.seedBack) {
             this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
           }
+          this.warehouse.addItem(result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount);
         }
         return;
       }
