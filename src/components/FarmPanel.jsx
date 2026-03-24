@@ -51,23 +51,26 @@ function SeedSelectPopup({ warehouse, onSelect, onClose }) {
   );
 }
 
-// 紧凑型进度条
-function MiniBar({ value, max, color }) {
+// 带标签的进度条
+function LabeledBar({ label, value, max, color, suffix }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
-    <div className="flex-1 h-1 bg-stone-700 rounded-full overflow-hidden">
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-stone-400 w-10 shrink-0 text-right">{label}</span>
+      <div className="flex-1 h-2 bg-stone-700 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-[10px] text-stone-400 w-8 shrink-0">{suffix ?? Math.floor(value)}</span>
     </div>
   );
 }
 
-// 详细模式卡片（农民视角，带进度条和名称）
+// 详细模式卡片（农民视角，带名称+进度条+操作按钮）
 function PlotCard({ plot, onAction, onPlant }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
   const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
   const crop = plot.getCropDef();
-  const yieldPct = plot.getYieldPercent();
   const isGrowing = plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED;
   const isReady = plot.state === FIELD_STATE.READY;
   const isEmpty = plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.WITHERED;
@@ -82,7 +85,7 @@ function PlotCard({ plot, onAction, onPlant }) {
     <div className={`rounded-lg border p-3 bg-stone-800/50 flex flex-col ${
       isGrowing ? 'border-green-700/50' : isReady ? 'border-yellow-600/50' : 'border-stone-700'
     }`}>
-      {/* 头部 */}
+      {/* 头部：名称 + 状态 */}
       <div className="flex items-center justify-between mb-2 h-5">
         <div className="flex items-center gap-1.5 min-w-0">
           {editing ? (
@@ -94,7 +97,7 @@ function PlotCard({ plot, onAction, onPlant }) {
             </div>
           ) : (
             <>
-              <span className="text-stone-300 text-sm font-medium truncate">{plot.name}</span>
+              <span className="text-stone-200 text-sm font-bold truncate">{plot.name}</span>
               <button onClick={() => { setEditName(plot.name); setEditing(true); }} className="text-stone-600 hover:text-stone-400"><Pencil size={10} /></button>
             </>
           )}
@@ -102,30 +105,21 @@ function PlotCard({ plot, onAction, onPlant }) {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {plot.hasPest && <Bug size={11} className="text-red-400" />}
-          <span className={`text-xs ${stateInfo.color}`}>{isGrowing ? `${Math.floor(plot.growthProgress)}%` : stateInfo.text}</span>
+          <span className={`text-xs ${stateInfo.color}`}>{stateInfo.text}</span>
         </div>
       </div>
 
-      {/* 指标行 */}
-      <div className="grid grid-cols-4 gap-2 mb-2">
-        <div className="flex flex-col items-center gap-0.5">
-          <MiniBar value={plot.waterLevel} max={100} color={plot.waterLevel < 30 ? '#ef4444' : '#3b82f6'} />
-          <span className="text-[9px] text-stone-500">💧{Math.floor(plot.waterLevel)}</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <MiniBar value={plot.fertility} max={100} color={plot.fertility < 60 ? '#f59e0b' : '#16a34a'} />
-          <span className="text-[9px] text-stone-500">🌱{Math.floor(plot.fertility)}</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <MiniBar value={plot.weedGrowth} max={100} color={plot.weedGrowth > 40 ? '#84cc16' : '#4d7c0f'} />
-          <span className="text-[9px] text-stone-500">🌿{Math.floor(plot.weedGrowth)}</span>
-        </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <MiniBar value={Math.max(0, 50 + yieldPct / 2)} max={100} color={yieldPct >= 0 ? '#22c55e' : '#ef4444'} />
-          <span className={`text-[9px] ${yieldPct < 0 ? 'text-red-400' : yieldPct > 0 ? 'text-green-400' : 'text-stone-500'}`}>
-            {yieldPct > 0 ? '+' : ''}{yieldPct}%
-          </span>
-        </div>
+      {/* 四维度进度条 */}
+      <div className="flex flex-col gap-1 mb-2">
+        <LabeledBar label="水分" value={plot.waterLevel} max={100}
+          color={plot.waterLevel < 30 ? '#ef4444' : '#3b82f6'} />
+        <LabeledBar label="肥力" value={plot.fertility} max={100}
+          color={plot.fertility < 60 ? '#f59e0b' : '#16a34a'} />
+        <LabeledBar label="生长" value={isGrowing ? plot.growthProgress : isReady ? 100 : 0} max={100}
+          color={isReady ? '#facc15' : '#22c55e'}
+          suffix={isGrowing ? `${Math.floor(plot.growthProgress)}%` : isReady ? '100%' : '-'} />
+        <LabeledBar label="杂草" value={plot.weedGrowth} max={100}
+          color={plot.weedGrowth > 40 ? '#84cc16' : '#4d7c0f'} />
       </div>
 
       {/* 操作按钮行 */}
@@ -150,25 +144,25 @@ function PlotCard({ plot, onAction, onPlant }) {
         )}
 
         <button onClick={() => onAction('water', { plotId: plot.id })}
-          className={`px-1.5 py-1 text-xs rounded transition-colors ${plot.waterLevel < 50 ? 'bg-blue-800/60 hover:bg-blue-700/60 text-blue-300' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
+          className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${plot.waterLevel < 50 ? 'bg-blue-800/60 hover:bg-blue-700/60 text-blue-300' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
           title="浇水">
-          <Droplets size={11} />
+          <Droplets size={11} /> 浇水
         </button>
         <button onClick={() => onAction('fertilize', { plotId: plot.id })}
-          className={`px-1.5 py-1 text-xs rounded transition-colors ${plot.fertility < 60 ? 'bg-green-800/60 hover:bg-green-700/60 text-green-300' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
+          className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${plot.fertility < 60 ? 'bg-green-800/60 hover:bg-green-700/60 text-green-300' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
           title="施肥">
-          <FlaskConical size={11} />
+          <FlaskConical size={11} /> 施肥
         </button>
         <button onClick={() => onAction('remove_weeds', { plotId: plot.id })}
-          className={`px-1.5 py-1 text-xs rounded transition-colors ${plot.weedGrowth > 40 ? 'bg-lime-700/60 hover:bg-lime-600/60 text-lime-200' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
+          className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${plot.weedGrowth > 40 ? 'bg-lime-700/60 hover:bg-lime-600/60 text-lime-200' : 'bg-stone-700/40 hover:bg-stone-600/40 text-stone-500'}`}
           title="除草">
-          <Leaf size={11} />
+          <Leaf size={11} /> 除草
         </button>
         {plot.hasPest && (
           <button onClick={() => onAction('remove_pest', { plotId: plot.id })}
-            className="px-1.5 py-1 text-xs bg-red-800/60 hover:bg-red-700/60 text-red-200 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-red-800/60 hover:bg-red-700/60 text-red-200 rounded transition-colors"
             title={`除虫(${plot.pestSeverity})`}>
-            <Bug size={11} />
+            <Bug size={11} /> 除虫
           </button>
         )}
 

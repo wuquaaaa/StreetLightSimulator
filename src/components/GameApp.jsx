@@ -140,14 +140,13 @@ export default function GameApp() {
     setBgmOn(isBGMPlaying());
   }, []);
 
-  // 计算农田tab的角色子页签
-  const hasFarmerLeader = game.player.roles.includes('farmer_leader');
-  const farmSubTabs = hasFarmerLeader ? ['farmer', 'farmer_leader'] : ['farmer'];
-  const showFarmSubTabs = farmSubTabs.length > 1;
-  const currentRoleTab = (activeRoleTab && farmSubTabs.includes(activeRoleTab)) ? activeRoleTab : 'farmer';
+  // 计算农田tab的角色子页签：按玩家实际身份决定
+  const farmRoles = game.player.roles.filter(r => r === 'farmer' || r === 'farmer_leader');
+  const showFarmSubTabs = farmRoles.length > 1;
+  const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
 
   const renderFarmContent = () => {
-    // 管理子标签 → FarmLeaderPanel；默认始终 → FarmPanel（带进度条）
+    // 农民 → 详细视图(带进度条)；农民队长 → 管理页面(紧凑方格)
     if (currentRoleTab === 'farmer_leader') {
       return <FarmLeaderPanel game={game} onAction={handleAction} />;
     }
