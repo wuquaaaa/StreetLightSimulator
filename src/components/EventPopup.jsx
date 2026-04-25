@@ -41,10 +41,8 @@ export default function EventPopup({ eventType, onAction }) {
   if (eventType === 'recruit' || eventType === 'day10_recruit') {
     return <RecruitEvent
       onAccept={() => {
-        onAction('recruit_accept');
-        // 自动成为农民队长+农民
-        onAction('set_player_roles', { roles: ['farmer_leader', 'farmer'] });
-        onAction('dismiss_event');
+        // 原子操作：招募 + 升职 + 关闭弹窗，一次完成避免中间状态
+        onAction('recruit_accept_with_promote');
       }}
       onReject={() => {
         onAction('recruit_reject');

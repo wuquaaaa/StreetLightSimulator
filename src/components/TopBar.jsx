@@ -98,7 +98,7 @@ function FoodTooltip({ game }) {
 /**
  * 身份选择下拉面板
  */
-function RoleDropdown({ player, onToggleRole, onClose }) {
+function RoleDropdown({ player, game, onToggleRole, onClose }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -109,27 +109,39 @@ function RoleDropdown({ player, onToggleRole, onClose }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
-  // 显示所有可用身份（玩家当前的 + 全部可切换的）
-  const unlockedRoles = ALL_AVAILABLE_ROLES;
+  // 基础身份始终可用；farmer_leader 需要接受过投靠才解锁
+  const hasAcceptedRecruit = game.triggeredEvents && game.triggeredEvents['recruit'] === 'accepted';
+  const unlockedRoles = ALL_AVAILABLE_ROLES.filter(r => {
+    if (r === 'farmer_leader' && !hasAcceptedRecruit) return false;
+    return true;
+  });
+
+  // 如果角色已拥有某身份但该身份不在解锁列表中，仍然显示（不可移除）
+  const displayRoles = [...new Set([...unlockedRoles, ...player.roles])];
 
   return (
     <div ref={ref} className="absolute top-full left-0 mt-2 bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-3 w-56 z-50">
       <div className="text-xs text-stone-400 mb-2">点击添加/移除身份（可多选，至少保留一个）</div>
       <div className="space-y-1.5">
-        {unlockedRoles.map(r => {
+        {displayRoles.map(r => {
           const info = ROLE_MAP[r] || { name: r, icon: '👤', color: 'text-stone-400', bg: 'bg-stone-700/30 border-stone-600/40' };
           const active = player.roles.includes(r);
+          const locked = !unlockedRoles.includes(r);
           return (
             <button
               key={r}
-              onClick={() => onToggleRole(r)}
+              onClick={() => !locked && onToggleRole(r)}
+              disabled={locked}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-sm transition-colors ${
                 active ? info.bg : 'bg-stone-900/30 border-stone-700/30 opacity-50 hover:opacity-80'
-              }`}
+              } ${locked ? 'cursor-not-allowed' : ''}`}
+              title={locked ? '接受投靠者后解锁' : ''}
             >
               <span>{info.icon}</span>
               <span className={active ? info.color : 'text-stone-500'}>{info.name}</span>
-              {active && <span className="ml-auto text-xs text-green-400">✓</span>}
+              {locked && !active && <span className="ml-auto text-xs text-stone-600">🔒</span>}
+              {active && !locked && <span className="ml-auto text-xs text-green-400">✓</span>}
+              {active && locked && <span className="ml-auto text-xs text-amber-400">✓ (已获得)</span>}
             </button>
           );
         })}
@@ -145,6 +157,10 @@ export default function TopBar({ game, onAction }) {
   const wheatCount = game.warehouse.getItemAmount('food', 'wheat');
 
   const handleToggleRole = (role) => {
+    // farmer_leader 需要接受过投靠才可解锁
+    if (role === 'farmer_leader' && (!game.triggeredEvents || game.triggeredEvents['recruit'] !== 'accepted')) {
+      return;
+    }
     const current = [...game.player.roles];
     const idx = current.indexOf(role);
     if (idx >= 0) {
@@ -193,6 +209,7 @@ export default function TopBar({ game, onAction }) {
           {showRoleDropdown && (
             <RoleDropdown
               player={game.player}
+              game={game}
               onToggleRole={handleToggleRole}
               onClose={() => setShowRoleDropdown(false)}
             />

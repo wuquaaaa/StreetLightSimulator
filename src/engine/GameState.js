@@ -214,6 +214,23 @@ export class GameState {
         result = { success: true, message: `${name}加入了`, npcName: name };
         break;
       }
+      case 'recruit_accept_with_promote': {
+        // 原子操作：招募NPC + 玩家升为农民队长，一次完成
+        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
+          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英'];
+        const name = CHINESE_NAMES[Math.floor(Math.random() * CHINESE_NAMES.length)];
+        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
+        npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
+        this.characters.push(npc);
+        this.population++;
+        this.triggeredEvents['recruit'] = 'accepted';
+        this.addLog(`${name}加入了你的队伍！他是一个农民。`);
+        // 自动成为农民队长+农民
+        this.player.roles = ['farmer_leader', 'farmer'];
+        this.addLog('你现在的身份是：农民队长、农民');
+        result = { success: true, message: `${name}加入了，你成为了农民队长`, npcName: name };
+        break;
+      }
       case 'recruit_reject':
         // 拒绝后不设置 'accepted'，下个10天还会来
         this.addLog('你拒绝了来访者的请求。也许过些天还会有人来。');

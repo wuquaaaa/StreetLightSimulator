@@ -124,8 +124,12 @@ export default function GameApp() {
     }
     const g = gameRef.current;
     sfxForAction(action);
-    g.doAction(action, params);
+    const result = g.doAction(action, params);
     forceUpdate();
+    // 招募+升职操作完成后自动关闭弹窗
+    if (action === 'recruit_accept_with_promote' && result && result.success) {
+      setActiveEvent(null);
+    }
   }, [forceUpdate]);
 
   const handleLoadGame = useCallback((loadedGame) => {
