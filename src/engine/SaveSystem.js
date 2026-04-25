@@ -65,7 +65,10 @@ export const SaveSystem = {
     game.foodPerPerson = data.foodPerPerson;
     game.player = GameState._charFromJSON(data.player);
     game.characters = (data.characters || []).map(c => GameState._charFromJSON(c));
-    game.triggeredEvents = data.triggeredEvents || {};
+    // 触发事件状态：重新绑定引用，确保 game.triggeredEvents 与 eventSystem.triggeredEvents 指向同一对象
+    const restoredEvents = data.triggeredEvents || {};
+    game.triggeredEvents = restoredEvents;
+    game.eventSystem.triggeredEvents = restoredEvents;
     game.farm = GameState._farmFromJSON(data.farm);
     game.log = data.log || [];
 
