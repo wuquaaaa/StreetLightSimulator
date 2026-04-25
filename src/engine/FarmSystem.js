@@ -39,6 +39,16 @@ export const FIELD_STATE = {
   WITHERED: 'withered',
 };
 
+// 农田状态显示映射（统一管理，供所有组件使用）
+export const FIELD_DISPLAY = {
+  [FIELD_STATE.EMPTY]:    { text: '空地', color: 'text-stone-500', bg: 'bg-stone-700', border: 'border-stone-600', label: '空' },
+  [FIELD_STATE.PLOWED]:   { text: '已翻地', color: 'text-amber-600', bg: 'bg-amber-900/60', border: 'border-amber-700/50', label: '翻' },
+  [FIELD_STATE.PLANTED]:  { text: '已播种', color: 'text-green-600', bg: 'bg-green-900/60', border: 'border-green-700/50', label: '种' },
+  [FIELD_STATE.GROWING]:  { text: '生长中', color: 'text-green-400', bg: 'bg-green-800/60', border: 'border-green-600/50', label: null },
+  [FIELD_STATE.READY]:    { text: '可收获', color: 'text-yellow-400', bg: 'bg-yellow-800/60', border: 'border-yellow-600/50', label: '收' },
+  [FIELD_STATE.WITHERED]: { text: '已枯萎', color: 'text-red-500', bg: 'bg-red-900/60', border: 'border-red-700/50', label: '枯' },
+};
+
 export class FarmPlot {
   constructor(id, index) {
     this.id = id;
@@ -409,6 +419,22 @@ export class FarmSystem {
     }
 
     return events;
+  }
+
+  /**
+   * 冬天冻害：随机冻死正在生长的作物
+   * @param {number} freezeChance - 冻害概率
+   * @returns {number} 受损农田数量
+   */
+  applyWinterDamage(freezeChance) {
+    let damaged = 0;
+    for (const plot of this.plots) {
+      if (plot.state === FIELD_STATE.GROWING && Math.random() < freezeChance) {
+        plot.state = FIELD_STATE.WITHERED;
+        damaged++;
+      }
+    }
+    return damaged;
   }
 
   // 设置目标农田数（自动拆除多余空闲农田）

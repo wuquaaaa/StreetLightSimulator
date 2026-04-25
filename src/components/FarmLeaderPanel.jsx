@@ -1,17 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Plus, Minus, UserPlus, Trash2 } from 'lucide-react';
-import { FIELD_STATE } from '../engine/FarmSystem';
+import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
+import { FARM_EXPAND_TICKS } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
-
-const STATE_COLORS = {
-  [FIELD_STATE.EMPTY]: { bg: 'bg-stone-700', border: 'border-stone-600', label: '空' },
-  [FIELD_STATE.PLOWED]: { bg: 'bg-amber-900/60', border: 'border-amber-700/50', label: '翻' },
-  [FIELD_STATE.PLANTED]: { bg: 'bg-green-900/60', border: 'border-green-700/50', label: '种' },
-  [FIELD_STATE.GROWING]: { bg: 'bg-green-800/60', border: 'border-green-600/50', label: null },
-  [FIELD_STATE.READY]: { bg: 'bg-yellow-800/60', border: 'border-yellow-600/50', label: '收' },
-  [FIELD_STATE.WITHERED]: { bg: 'bg-red-900/60', border: 'border-red-700/50', label: '枯' },
-};
 
 // 获取plot的分配角色名列表
 function getAssignedNames(plot, farmers) {
@@ -23,7 +15,7 @@ function getAssignedNames(plot, farmers) {
 }
 
 function PlotBlock({ plot, farmers, selected, onClick }) {
-  const info = STATE_COLORS[plot.state] || STATE_COLORS[FIELD_STATE.EMPTY];
+  const info = FIELD_DISPLAY[plot.state] || FIELD_DISPLAY[FIELD_STATE.EMPTY];
   const growPct = plot.state === FIELD_STATE.GROWING ? Math.floor(plot.growthProgress) : null;
   const caretakers = getAssignedNames(plot, farmers);
 
@@ -61,7 +53,7 @@ function PlotBlock({ plot, farmers, selected, onClick }) {
 
 function ExpandBlock({ q, allChars }) {
   const char = allChars.find(c => c.id === q.characterId);
-  const pct = Math.floor(((50 - q.ticksRemaining) / 50) * 100);
+  const pct = Math.floor(((FARM_EXPAND_TICKS - q.ticksRemaining) / FARM_EXPAND_TICKS) * 100);
   return (
     <div className="w-16 h-16 rounded-lg border-2 border-dashed border-stone-600 flex flex-col items-center justify-center overflow-hidden relative">
       {/* 进度条背景 */}

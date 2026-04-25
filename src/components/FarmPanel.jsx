@@ -1,16 +1,10 @@
 import { useState } from 'react';
 import { Droplets, Scissors, Shovel, Sprout, Bug, Leaf, FlaskConical, X, Pencil, Check } from 'lucide-react';
-import { FIELD_STATE } from '../engine/FarmSystem';
+import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
+import { FARM_EXPAND_TICKS } from '../engine/constants';
 import { CROPS } from '../data/crops';
 
-const STATE_LABELS = {
-  [FIELD_STATE.EMPTY]: { text: '空地', color: 'text-stone-500' },
-  [FIELD_STATE.PLOWED]: { text: '已翻地', color: 'text-amber-600' },
-  [FIELD_STATE.PLANTED]: { text: '已播种', color: 'text-green-600' },
-  [FIELD_STATE.GROWING]: { text: '生长中', color: 'text-green-400' },
-  [FIELD_STATE.READY]: { text: '可收获', color: 'text-yellow-400' },
-  [FIELD_STATE.WITHERED]: { text: '已枯萎', color: 'text-red-500' },
-};
+
 
 function SeedSelectPopup({ warehouse, onSelect, onClose }) {
   const availableSeeds = CROPS.map(crop => {
@@ -69,7 +63,7 @@ function LabeledBar({ label, value, max, color, suffix }) {
 function PlotCard({ plot, onAction, onPlant, characters, player }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
-  const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
+  const stateInfo = FIELD_DISPLAY[plot.state] || FIELD_DISPLAY[FIELD_STATE.EMPTY];
   const crop = plot.getCropDef();
   const isGrowing = plot.state === FIELD_STATE.GROWING || plot.state === FIELD_STATE.PLANTED;
   const isReady = plot.state === FIELD_STATE.READY;
@@ -231,7 +225,7 @@ export default function FarmPanel({ game, onAction }) {
       {game.farm.expandQueue.length > 0 && (
         <div className="flex flex-wrap gap-3 mt-3">
           {game.farm.expandQueue.map((q, i) => {
-            const pct = Math.floor(((50 - q.ticksRemaining) / 50) * 100);
+            const pct = Math.floor(((FARM_EXPAND_TICKS - q.ticksRemaining) / FARM_EXPAND_TICKS) * 100);
             const allChars = [game.player, ...(game.characters || [])];
             const char = allChars.find(c => c.id === q.characterId);
             return (

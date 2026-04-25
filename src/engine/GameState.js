@@ -7,25 +7,14 @@ import { Character } from './Character';
 import { FarmSystem, FarmPlot } from './FarmSystem';
 import { WarehouseSystem } from './WarehouseSystem';
 import { SaveSystem } from './SaveSystem';
+import { NPCAISystem } from './NPCAISystem';
+import { FoodSystem } from './FoodSystem';
+import { EventSystem } from './EventSystem';
+import { NPC_NAMES } from '../data/names';
+import { getRoleName } from '../data/roles';
 import {
-  TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, FOOD_PER_PERSON, WINTER_FREEZE_CHANCE,
-  NPC_WATER_THRESHOLD, NPC_WEED_THRESHOLD, NPC_FERTILITY_THRESHOLD,
+  TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
 } from './constants';
-
-// NPC 名字池（统一管理，避免重复定义）
-const NPC_NAMES = [
-  '张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
-  '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英',
-  '徐大宝', '宋小美', '冯铁蛋', '褚翠花', '卫大山', '蒋小龙', '沈秋菊', '韩冬梅',
-];
-
-// 角色名称映射（统一管理，避免分散在多个文件）
-export const ROLE_DISPLAY_NAMES = {
-  farmer: '农民',
-  farmer_leader: '农民队长',
-  scholar: '学者',
-  trader: '商人',
-};
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -33,16 +22,16 @@ export class GameState {
     this.tickCount = 0;
     this.season = '春';
 
-    this.population = 1;
-    this.foodPerPerson = FOOD_PER_PERSON;
-
     this.player = new Character({ name: playerName, roles: ['farmer'], isPlayer: true });
     this.characters = []; // NPC角色列表
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
+    this.npcAI = new NPCAISystem();
+    this.foodSystem = new FoodSystem();
+    this.eventSystem = new EventSystem();
 
-    // 事件系统
-    this.triggeredEvents = {}; // 已触发事件的记录
+    // 事件系统（委托给 EventSystem，保留引用兼容旧存档）
+    this.triggeredEvents = this.eventSystem.triggeredEvents;
 
     // 初始物资
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
@@ -61,7 +50,23 @@ export class GameState {
   }
 
   get dailyFoodConsumption() {
-    return this.population * this.foodPerPerson;
+    return this.foodSystem.dailyConsumption;
+  }
+
+  get population() {
+    return this.foodSystem.population;
+  }
+
+  set population(val) {
+    this.foodSystem.population = val;
+  }
+
+  get foodPerPerson() {
+    return this.foodSystem.foodPerPerson;
+  }
+
+  set foodPerPerson(val) {
+    this.foodSystem.foodPerPerson = val;
   }
 
   tick() {
@@ -79,33 +84,16 @@ export class GameState {
         this.addLog(`季节变化：进入了${this.season}季`);
       }
 
-      // 每10天招工事件（如果从未接受过）
-      if (this.day >= 10 && this.day % 10 === 0 && this.triggeredEvents['recruit'] !== 'accepted') {
-        // 避免同一天重复触发
-        if (this.triggeredEvents['recruit_last_day'] !== this.day) {
-          this.triggeredEvents['recruit_last_day'] = this.day;
-          this.addNotification('event:recruit');
-        }
-      }
+      // 事件检查
+      const eventNotifs = this.eventSystem.checkEvents(this.day);
+      eventNotifs.forEach(n => this.addNotification(n));
 
-      // 消耗食物
-      const needed = this.dailyFoodConsumption;
-      const wheatAmount = this.warehouse.getItemAmount('food', 'wheat');
-      if (wheatAmount >= needed) {
-        this.warehouse.removeItem('food', 'wheat', needed);
-        // 吃饱了心情自然恢复
-        this.player.changeMood(1);
-      } else if (wheatAmount > 0) {
-        this.warehouse.removeItem('food', 'wheat', wheatAmount);
-        this.addLog(`食物不足！只够吃${wheatAmount}单位...`);
-        this.addNotification('警告：食物不足！');
-        // 食物不足减少心情
-        this.player.changeMood(-5);
-      } else {
-        this.addLog('完全没有食物了！你正在挨饿...');
-        this.addNotification('警告：食物耗尽！');
-        // 饥饿大幅减少心情
-        this.player.changeMood(-10);
+      // 食物消耗
+      const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player);
+      foodResult.logs.forEach(msg => this.addLog(msg));
+      foodResult.notifications.forEach(msg => this.addNotification(msg));
+      if (foodResult.moodDelta !== 0) {
+        this.player.changeMood(foodResult.moodDelta);
       }
     }
 
@@ -147,15 +135,13 @@ export class GameState {
     }
 
     // NPC农民自动劳作
-    this._autoFarmWork();
+    this.npcAI.tickAutoWork(this.characters, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
     // 冬天冻害
     if (this.season === '冬' && this.tickCount % TICKS_PER_DAY === 0) {
-      for (const plot of this.farm.plots) {
-        if (plot.state === 'growing' && Math.random() < WINTER_FREEZE_CHANCE) {
-          plot.state = 'withered';
-          this.addLog('严寒使一块作物冻死了');
-        }
+      const damagedCount = this.farm.applyWinterDamage(WINTER_FREEZE_CHANCE);
+      for (let i = 0; i < damagedCount; i++) {
+        this.addLog('严寒使一块作物冻死了');
       }
     }
   }
@@ -187,7 +173,7 @@ export class GameState {
       case 'harvest':
         result = this.farm.harvest(params.plotId, this.player);
         if (result.success && result.yield) {
-          this._processHarvestResult(result);
+          this.npcAI.processHarvestResult(result, this.warehouse, (msg) => this.addLog(msg));
           this.player.changeMood(3);
         }
         break;
@@ -242,7 +228,7 @@ export class GameState {
       case 'set_player_roles':
         if (params.roles && Array.isArray(params.roles)) {
           this.player.roles = params.roles;
-          const roleNames = params.roles.map(r => ROLE_DISPLAY_NAMES[r] || r).join('、');
+          const roleNames = params.roles.map(r => getRoleName(r)).join('、');
           this.addLog(`你现在的身份是：${roleNames}`);
           result = { success: true, message: `身份已更新` };
         } else {
@@ -288,104 +274,6 @@ export class GameState {
     this.characters.push(npc);
     this.population++;
     return { npc, name };
-  }
-
-  // NPC农民自动劳作：每tick根据工作速率执行操作
-  _autoFarmWork() {
-    const npcs = this.characters.filter(c => c.hasRole('farmer'));
-    for (const npc of npcs) {
-      // 检查是否在开垦
-      if (this.farm.expandQueue.find(q => q.characterId === npc.id)) continue;
-
-      const plots = this.farm.getPlotsForCharacter(npc.id);
-      if (plots.length === 0) continue;
-
-      const speed = npc.getFarmWorkSpeed();
-      // 用累计器判断本tick执行几次操作
-      // speed=1 → 每tick 1次, speed=2 → 每tick 2次
-      const ops = Math.floor(speed);
-      const remainder = speed - ops;
-      let totalOps = ops + (Math.random() < remainder ? 1 : 0);
-
-      for (let op = 0; op < totalOps; op++) {
-        this._npcDoOneFarmAction(npc, plots);
-      }
-    }
-  }
-
-  /**
-   * 统一处理收获结果：入库（种子+产物），检查溢出
-   * @param {object} result - FarmSystem.harvest() 的返回值
-   * @param {boolean} isPlayer - 是否是玩家操作（玩家会恢复心情）
-   */
-  _processHarvestResult(result) {
-    if (!result.success || !result.yield) return;
-    // 优先存入种子
-    if (result.seedBack) {
-      const seedResult = this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
-      if (seedResult.overflow > 0) {
-        this.addLog(`仓库满了！${seedResult.overflow}颗${result.seedBack.name}丢失`);
-      }
-    }
-    const storeResult = this.warehouse.addItem(
-      result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
-    );
-    if (storeResult.overflow > 0) {
-      this.addLog(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
-    }
-  }
-
-  _npcDoOneFarmAction(npc, plots) {
-    // 优先级：除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
-    for (const plot of plots) {
-      if (plot.hasPest) {
-        this.farm.removePest(plot.id, npc);
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.state === 'ready') {
-        const result = this.farm.harvest(plot.id, npc);
-        if (result.success && result.yield) {
-          this._processHarvestResult(result);
-        }
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.waterLevel < NPC_WATER_THRESHOLD) {
-        this.farm.water(plot.id, npc);
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.weedGrowth > NPC_WEED_THRESHOLD) {
-        this.farm.removeWeeds(plot.id, npc);
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.fertility < NPC_FERTILITY_THRESHOLD) {
-        this.farm.fertilize(plot.id, npc);
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.state === 'empty' || plot.state === 'withered') {
-        this.farm.plow(plot.id, npc);
-        return;
-      }
-    }
-    for (const plot of plots) {
-      if (plot.state === 'plowed') {
-        // 自动播种小麦（如果有种子）
-        const seedAmt = this.warehouse.getItemAmount('seed', 'wheat_seed');
-        if (seedAmt >= 1) {
-          this.farm.plant(plot.id, 'wheat', npc, this.warehouse);
-        }
-        return;
-      }
-    }
   }
 
   addLog(msg) {
