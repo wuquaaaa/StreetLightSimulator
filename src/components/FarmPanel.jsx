@@ -66,7 +66,7 @@ function LabeledBar({ label, value, max, color, suffix }) {
 }
 
 // 详细模式卡片（农民视角，带名称+进度条+操作按钮）
-function PlotCard({ plot, onAction, onPlant }) {
+function PlotCard({ plot, onAction, onPlant, characters, player }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
   const stateInfo = STATE_LABELS[plot.state] || STATE_LABELS[FIELD_STATE.EMPTY];
@@ -75,6 +75,15 @@ function PlotCard({ plot, onAction, onPlant }) {
   const isReady = plot.state === FIELD_STATE.READY;
   const isEmpty = plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.WITHERED;
   const isPlowed = plot.state === FIELD_STATE.PLOWED;
+
+  // 获取管理者名称
+  const getManagerName = (managerId) => {
+    if (managerId === player.id) return player.name;
+    const char = characters.find(c => c.id === managerId);
+    return char ? char.name : '未知';
+  };
+
+  const assignedManagers = plot.assignedTo.map(id => getManagerName(id));
 
   const handleRename = () => {
     onAction('rename_plot', { plotId: plot.id, newName: editName });
@@ -108,6 +117,18 @@ function PlotCard({ plot, onAction, onPlant }) {
           <span className={`text-xs ${stateInfo.color}`}>{stateInfo.text}</span>
         </div>
       </div>
+
+      {/* 管理者标签 */}
+      {assignedManagers.length > 0 && (
+        <div className="flex items-center gap-1 mb-2">
+          <span className="text-[10px] text-stone-500">👤 管理:</span>
+          {assignedManagers.map((name, idx) => (
+            <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-amber-900/30 text-amber-300 rounded">
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* 四维度进度条 */}
       <div className="flex flex-col gap-1 mb-2">
@@ -183,6 +204,8 @@ export default function FarmPanel({ game, onAction }) {
   };
 
   const plots = game.farm.plots;
+  const characters = game.characters || [];
+  const player = game.player;
 
   return (
     <div>
@@ -200,7 +223,7 @@ export default function FarmPanel({ game, onAction }) {
       {/* 详细视图（农民视角，带进度条和名称） */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {plots.map(plot => (
-          <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} />
+          <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant} characters={characters} player={player} />
         ))}
       </div>
 
