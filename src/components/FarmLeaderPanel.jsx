@@ -215,7 +215,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
                 <span className="text-sm font-bold text-stone-200">{selectedPlotData.name}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-stone-500">
-                    {STATE_COLORS[selectedPlotData.state]?.label || selectedPlotData.state}
+                    {FIELD_DISPLAY[selectedPlotData.state]?.label || selectedPlotData.state}
                     {selectedPlotData.state === FIELD_STATE.GROWING && ` ${Math.floor(selectedPlotData.growthProgress)}%`}
                   </span>
                   <button

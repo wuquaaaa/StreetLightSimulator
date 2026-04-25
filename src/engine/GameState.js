@@ -16,6 +16,27 @@ import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
 } from './constants';
 
+// 纯委托映射：action → { target, method }
+// 15 个不需要 GameState 介入的 case，统一处理 result.message 日志
+const FARM_DELEGATES = {
+  plow:          (g, p) => g.farm.plow(p.plotId, g.player),
+  plant:         (g, p) => g.farm.plant(p.plotId, p.cropId, g.player, g.warehouse),
+  water:         (g, p) => g.farm.water(p.plotId, g.player),
+  remove_pest:   (g, p) => g.farm.removePest(p.plotId, g.player),
+  remove_weeds:  (g, p) => g.farm.removeWeeds(p.plotId, g.player),
+  fertilize:     (g, p) => g.farm.fertilize(p.plotId, g.player),
+  rename_plot:   (g, p) => g.farm.renamePlot(p.plotId, p.newName),
+  expand_farm:   (g)    => g.farm.expandFarm(),
+  remove_plot:   (g, p) => g.farm.removePlot(p.plotId),
+  assign_plot:   (g, p) => g.farm.assignPlot(p.plotId, p.characterId),
+  unassign_plot: (g, p) => g.farm.unassignPlot(p.plotId, p.characterId),
+  set_target_plots: (g, p) => g.farm.setTargetPlots(p.count),
+};
+const WAREHOUSE_DELEGATES = {
+  upgrade_common:    (g) => g.warehouse.upgradeCommon(),
+  upgrade_warehouse: (g, p) => g.warehouse.upgradeWarehouse(p.category),
+};
+
 export class GameState {
   constructor(playerName = '旅人') {
     this.day = 1;
@@ -148,46 +169,31 @@ export class GameState {
 
   doAction(action, params = {}) {
     let result;
+
+    // 纯委托：农田操作（12 个）
+    const farmFn = FARM_DELEGATES[action];
+    if (farmFn) {
+      result = farmFn(this, params);
+      if (result && result.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 纯委托：仓库操作（2 个）
+    const warehouseFn = WAREHOUSE_DELEGATES[action];
+    if (warehouseFn) {
+      result = warehouseFn(this, params);
+      if (result && result.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 带副作用的操作（6 个）
     switch (action) {
-      case 'plow':
-        result = this.farm.plow(params.plotId, this.player);
-        break;
-      case 'plant':
-        result = this.farm.plant(params.plotId, params.cropId, this.player, this.warehouse);
-        break;
-      case 'water':
-        result = this.farm.water(params.plotId, this.player);
-        break;
-      case 'remove_pest':
-        result = this.farm.removePest(params.plotId, this.player);
-        break;
-      case 'remove_weeds':
-        result = this.farm.removeWeeds(params.plotId, this.player);
-        break;
-      case 'fertilize':
-        result = this.farm.fertilize(params.plotId, this.player);
-        break;
-      case 'rename_plot':
-        result = this.farm.renamePlot(params.plotId, params.newName);
-        break;
       case 'harvest':
-        result = this.farm.harvest(params.plotId, this.player);
+        result = this.farm.harvest(params.plotId, this.player, this.warehouse);
         if (result.success && result.yield) {
-          this.npcAI.processHarvestResult(result, this.warehouse, (msg) => this.addLog(msg));
           this.player.changeMood(3);
+          result.overflowWarnings?.forEach(msg => this.addLog(msg));
         }
-        break;
-      case 'expand_farm':
-        result = this.farm.expandFarm();
-        break;
-      case 'remove_plot':
-        result = this.farm.removePlot(params.plotId);
-        break;
-      case 'upgrade_common':
-        result = this.warehouse.upgradeCommon();
-        break;
-      case 'upgrade_warehouse':
-        result = this.warehouse.upgradeWarehouse(params.category);
         break;
       case 'recruit_accept': {
         const { name } = this._createNPCFarmer();
@@ -200,25 +206,14 @@ export class GameState {
         const { name } = this._createNPCFarmer();
         this.triggeredEvents['recruit'] = 'accepted';
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
-        // 自动成为农民队长+农民
         this.player.roles = ['farmer_leader', 'farmer'];
         this.addLog('你现在的身份是：农民队长、农民');
         result = { success: true, message: `${name}加入了，你成为了农民队长`, npcName: name };
         break;
       }
       case 'recruit_reject':
-        // 拒绝后不设置 'accepted'，下个10天还会来
         this.addLog('你拒绝了来访者的请求。也许过些天还会有人来。');
         result = { success: true, message: '拒绝了招工请求' };
-        break;
-      case 'assign_plot':
-        result = this.farm.assignPlot(params.plotId, params.characterId);
-        break;
-      case 'unassign_plot':
-        result = this.farm.unassignPlot(params.plotId, params.characterId);
-        break;
-      case 'set_target_plots':
-        result = this.farm.setTargetPlots(params.count);
         break;
       case 'leader_recruit': {
         const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });

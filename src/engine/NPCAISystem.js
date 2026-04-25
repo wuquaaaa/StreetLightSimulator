@@ -53,9 +53,9 @@ export class NPCAISystem {
     }
     for (const plot of plots) {
       if (plot.state === 'ready') {
-        const result = farm.harvest(plot.id, npc);
+        const result = farm.harvest(plot.id, npc, warehouse);
         if (result.success && result.yield) {
-          this.processHarvestResult(result, warehouse, logFn);
+          result.overflowWarnings?.forEach(msg => logFn(msg));
         }
         return;
       }
@@ -95,25 +95,5 @@ export class NPCAISystem {
     }
   }
 
-  /**
-   * 统一处理收获结果：入库（种子+产物），检查溢出
-   * @param {object} result - FarmSystem.harvest() 的返回值
-   * @param {WarehouseSystem} warehouse - 仓库系统
-   * @param {(msg: string) => void} logFn - 日志函数
-   */
-  processHarvestResult(result, warehouse, logFn) {
-    if (!result.success || !result.yield) return;
-    if (result.seedBack) {
-      const seedResult = warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
-      if (seedResult.overflow > 0) {
-        logFn(`仓库满了！${seedResult.overflow}颗${result.seedBack.name}丢失`);
-      }
-    }
-    const storeResult = warehouse.addItem(
-      result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
-    );
-    if (storeResult.overflow > 0) {
-      logFn(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
-    }
-  }
 }
+

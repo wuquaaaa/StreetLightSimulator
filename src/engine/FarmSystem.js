@@ -241,7 +241,7 @@ export class FarmSystem {
     return { success: true, message: `除草完成，杂草 ${Math.floor(plot.weedGrowth)}` };
   }
 
-  harvest(plotId, character) {
+  harvest(plotId, character, warehouse) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
     if (plot.state !== FIELD_STATE.READY) return { success: false, message: '作物还没成熟' };
@@ -288,10 +288,26 @@ export class FarmSystem {
     if (bonusYield > 0) message += `（丰收！+${bonusYield}）`;
     message += `，获得${seedBack}颗${crop.seedName}`;
 
+    // 入库（种子+产物），返回溢出警告
+    const overflowWarnings = [];
+    if (warehouse) {
+      if (seedBack) {
+        const seedResult = warehouse.addItem('seed', crop.seedId, crop.seedName, seedBack);
+        if (seedResult.overflow > 0) {
+          overflowWarnings.push(`仓库满了！${seedResult.overflow}颗${crop.seedName}丢失`);
+        }
+      }
+      const storeResult = warehouse.addItem(crop.category, crop.harvestItem, crop.name, totalYield);
+      if (storeResult.overflow > 0) {
+        overflowWarnings.push(`仓库满了！${storeResult.overflow}单位${crop.name}丢失`);
+      }
+    }
+
     return {
       success: true, message, isHighQuality,
       yield: { itemId: crop.harvestItem, category: crop.category, amount: totalYield, name: crop.name },
       seedBack: { itemId: crop.seedId, amount: seedBack, name: crop.seedName },
+      overflowWarnings,
     };
   }
 
