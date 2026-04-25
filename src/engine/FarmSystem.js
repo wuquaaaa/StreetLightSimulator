@@ -411,6 +411,27 @@ export class FarmSystem {
     return events;
   }
 
+  // 设置目标农田数（自动拆除多余空闲农田）
+  setTargetPlots(count) {
+    if (typeof count !== 'number' || count < 0) {
+      return { success: false, message: '无效的目标数' };
+    }
+    this.targetPlotCount = count;
+    let removed = 0;
+    while (this.plots.length > count && this.plots.length > 1) {
+      const removableIdx = [...this.plots].reverse().findIndex(p =>
+        p.state === FIELD_STATE.EMPTY || p.state === FIELD_STATE.WITHERED || p.state === FIELD_STATE.PLOWED
+      );
+      if (removableIdx === -1) break;
+      const actualIdx = this.plots.length - 1 - removableIdx;
+      this.plots.splice(actualIdx, 1);
+      removed++;
+    }
+    let msg = `目标农田数设为 ${count}`;
+    if (removed > 0) msg += `，已拆除 ${removed} 块空闲农田`;
+    return { success: true, message: msg };
+  }
+
   removePlot(plotId) {
     if (this.plots.length <= 1) return { success: false, message: '至少保留一块农田' };
     const idx = this.plots.findIndex(p => p.id === plotId);

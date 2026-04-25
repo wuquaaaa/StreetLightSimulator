@@ -6,13 +6,11 @@
 import { Character } from './Character';
 import { FarmSystem, FarmPlot } from './FarmSystem';
 import { WarehouseSystem } from './WarehouseSystem';
+import { SaveSystem } from './SaveSystem';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, FOOD_PER_PERSON, WINTER_FREEZE_CHANCE,
   NPC_WATER_THRESHOLD, NPC_WEED_THRESHOLD, NPC_FERTILITY_THRESHOLD,
 } from './constants';
-
-const SAVE_KEY_PREFIX = 'streetlight_save_';
-const SAVE_SLOTS = 5;
 
 // NPC 名字池（统一管理，避免重复定义）
 const NPC_NAMES = [
@@ -189,20 +187,7 @@ export class GameState {
       case 'harvest':
         result = this.farm.harvest(params.plotId, this.player);
         if (result.success && result.yield) {
-          // 优先存入种子（确保种子不会因仓库满而丢失）
-          if (result.seedBack) {
-            const seedResult = this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
-            if (seedResult.overflow > 0) {
-              this.addLog(`仓库满了！${seedResult.overflow}颗${result.seedBack.name}丢失`);
-            }
-          }
-          const storeResult = this.warehouse.addItem(
-            result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
-          );
-          if (storeResult.overflow > 0) {
-            this.addLog(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
-          }
-          // 收获增加心情
+          this._processHarvestResult(result);
           this.player.changeMood(3);
         }
         break;
@@ -247,27 +232,7 @@ export class GameState {
         result = this.farm.unassignPlot(params.plotId, params.characterId);
         break;
       case 'set_target_plots':
-        if (typeof params.count === 'number' && params.count >= 0) {
-          this.farm.targetPlotCount = params.count;
-          // 如果目标低于当前农田数，自动删除空闲农田
-          let removed = 0;
-          while (this.farm.plots.length > params.count && this.farm.plots.length > 1) {
-            // 优先删除空地/枯萎/已翻地的，从后往前找
-            const removableIdx = [...this.farm.plots].reverse().findIndex(p =>
-              p.state === 'empty' || p.state === 'withered' || p.state === 'plowed'
-            );
-            if (removableIdx === -1) break; // 没有可删的（全在种植/成熟）
-            const actualIdx = this.farm.plots.length - 1 - removableIdx;
-            const removedPlot = this.farm.plots[actualIdx];
-            this.farm.plots.splice(actualIdx, 1);
-            removed++;
-          }
-          let msg = `目标农田数设为 ${params.count}`;
-          if (removed > 0) msg += `，已拆除 ${removed} 块空闲农田`;
-          result = { success: true, message: msg };
-        } else {
-          result = { success: false, message: '无效的目标数' };
-        }
+        result = this.farm.setTargetPlots(params.count);
         break;
       case 'leader_recruit': {
         const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
@@ -348,6 +313,28 @@ export class GameState {
     }
   }
 
+  /**
+   * 统一处理收获结果：入库（种子+产物），检查溢出
+   * @param {object} result - FarmSystem.harvest() 的返回值
+   * @param {boolean} isPlayer - 是否是玩家操作（玩家会恢复心情）
+   */
+  _processHarvestResult(result) {
+    if (!result.success || !result.yield) return;
+    // 优先存入种子
+    if (result.seedBack) {
+      const seedResult = this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
+      if (seedResult.overflow > 0) {
+        this.addLog(`仓库满了！${seedResult.overflow}颗${result.seedBack.name}丢失`);
+      }
+    }
+    const storeResult = this.warehouse.addItem(
+      result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount
+    );
+    if (storeResult.overflow > 0) {
+      this.addLog(`仓库满了！${storeResult.overflow}单位${result.yield.name}丢失`);
+    }
+  }
+
   _npcDoOneFarmAction(npc, plots) {
     // 优先级：除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
     for (const plot of plots) {
@@ -360,11 +347,7 @@ export class GameState {
       if (plot.state === 'ready') {
         const result = this.farm.harvest(plot.id, npc);
         if (result.success && result.yield) {
-          // 优先存入种子
-          if (result.seedBack) {
-            this.warehouse.addItem('seed', result.seedBack.itemId, result.seedBack.name, result.seedBack.amount);
-          }
-          this.warehouse.addItem(result.yield.category, result.yield.itemId, result.yield.name, result.yield.amount);
+          this._processHarvestResult(result);
         }
         return;
       }
@@ -412,142 +395,14 @@ export class GameState {
   addNotification(msg) { this.notifications.push(msg); }
   clearNotifications() { this.notifications = []; }
 
-  // ====== 存档系统（5个栏位）======
-  _serializeData() {
-    const data = {
-      version: 2,
-      timestamp: Date.now(),
-      day: this.day,
-      tickCount: this.tickCount,
-      season: this.season,
-      population: this.population,
-      foodPerPerson: this.foodPerPerson,
-      player: this.player.toJSON(),
-      characters: this.characters.map(c => c.toJSON()),
-      triggeredEvents: { ...this.triggeredEvents },
-      farm: this.farm.toJSON(),
-      warehouse: {
-        common: {
-          items: { ...this.warehouse.common.items },
-          capacity: this.warehouse.common.capacity,
-          level: this.warehouse.common.level,
-        },
-        storage: {},
-      },
-      log: this.log.slice(-50),
-    };
-    for (const [key, cat] of Object.entries(this.warehouse.storage)) {
-      data.warehouse.storage[key] = {
-        items: { ...cat.items },
-        capacity: cat.capacity,
-        level: cat.level,
-        unlocked: cat.unlocked,
-      };
-    }
-    return data;
-  }
+  // ====== 存档系统（委托给 SaveSystem）======
+  save(slot = 0) { return SaveSystem.save(this, slot); }
+  static load(slot = 0) { return SaveSystem.load(slot, GameState); }
+  static loadAny() { return SaveSystem.loadAny(GameState); }
+  static getSaveSlots() { return SaveSystem.getSaveSlots(); }
+  static hasSave() { return SaveSystem.hasSave(); }
 
-  save(slot = 0) {
-    const data = this._serializeData();
-    try {
-      localStorage.setItem(`${SAVE_KEY_PREFIX}${slot}`, JSON.stringify(data));
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  static _restoreFromData(data) {
-    const game = new GameState();
-    game.day = data.day;
-    game.tickCount = data.tickCount;
-    game.season = data.season;
-    game.population = data.population;
-    game.foodPerPerson = data.foodPerPerson;
-    game.player = Character.fromJSON(data.player);
-    game.characters = (data.characters || []).map(c => Character.fromJSON(c));
-    game.triggeredEvents = data.triggeredEvents || {};
-    game.farm = FarmSystem.fromJSON(data.farm);
-    game.log = data.log || [];
-
-    if (data.warehouse) {
-      game.warehouse.common.items = data.warehouse.common.items || {};
-      game.warehouse.common.capacity = data.warehouse.common.capacity || 300;
-      game.warehouse.common.level = data.warehouse.common.level || 1;
-      for (const [key, cat] of Object.entries(data.warehouse.storage || {})) {
-        if (game.warehouse.storage[key]) {
-          game.warehouse.storage[key].items = cat.items || {};
-          game.warehouse.storage[key].capacity = cat.capacity || 200;
-          game.warehouse.storage[key].level = cat.level || 0;
-          game.warehouse.storage[key].unlocked = cat.unlocked || false;
-        }
-      }
-    }
-
-    game.addLog('存档已加载');
-    return game;
-  }
-
-  static load(slot = 0) {
-    try {
-      const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${slot}`);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (!data || (data.version !== 1 && data.version !== 2)) return null;
-      return GameState._restoreFromData(data);
-    } catch {
-      return null;
-    }
-  }
-
-  // 获取所有栏位信息
-  static getSaveSlots() {
-    const slots = [];
-    for (let i = 0; i < SAVE_SLOTS; i++) {
-      try {
-        const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`);
-        if (raw) {
-          const data = JSON.parse(raw);
-          slots.push({
-            slot: i,
-            occupied: true,
-            day: data.day,
-            season: data.season,
-            timestamp: data.timestamp,
-            playerName: data.player?.name || '未知',
-          });
-        } else {
-          slots.push({ slot: i, occupied: false });
-        }
-      } catch {
-        slots.push({ slot: i, occupied: false });
-      }
-    }
-    return slots;
-  }
-
-  static hasSave() {
-    for (let i = 0; i < SAVE_SLOTS; i++) {
-      if (localStorage.getItem(`${SAVE_KEY_PREFIX}${i}`)) return true;
-    }
-    // 兼容旧存档
-    return !!localStorage.getItem('streetlight_save');
-  }
-
-  static loadAny() {
-    // 先尝试新格式
-    for (let i = 0; i < SAVE_SLOTS; i++) {
-      const game = GameState.load(i);
-      if (game) return game;
-    }
-    // 兼容旧存档
-    try {
-      const raw = localStorage.getItem('streetlight_save');
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data && data.version === 1) return GameState._restoreFromData(data);
-      }
-    } catch { /* ignore */ }
-    return null;
-  }
+  // 暴露给 SaveSystem 使用的反序列化辅助方法
+  static _charFromJSON = Character.fromJSON;
+  static _farmFromJSON = FarmSystem.fromJSON;
 }
