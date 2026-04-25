@@ -122,10 +122,8 @@ export default function FarmLeaderPanel({ game, onAction }) {
   }
 
   const dailyYield = calcDailyYieldEstimate(plots);
-  // 统计用：包含玩家在内的全部农民
-  const allFarmers = [game.player, ...game.characters].filter(c => c.hasRole('farmer'));
   const assignedFarmerCount = new Set(plots.flatMap(p => Array.isArray(p.assignedTo) ? p.assignedTo : (p.assignedTo ? [p.assignedTo] : []))).size;
-  const idleFarmers = allFarmers.filter(f => {
+  const idleFarmers = farmers.filter(f => {
     const hasPlots = game.farm.getPlotsForCharacter(f.id).length > 0;
     const isExpanding = game.farm.expandQueue.find(q => q.characterId === f.id);
     return !hasPlots && !isExpanding;
@@ -172,7 +170,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
         <span className="text-stone-400">预计总产 <span className="text-amber-400 font-bold">{estimatedHarvest}</span></span>
         <span className="text-stone-400">日均产量 <span className="text-amber-300 font-bold">≈{dailyYield.toFixed(1)}</span></span>
         <span className="text-stone-400">平均肥力 <span className="text-green-400 font-bold">{avgFertility}</span></span>
-        <span className="text-stone-400">农民 <span className="text-stone-200 font-bold">{allFarmers.length}</span><span className="text-stone-600">（在岗{assignedFarmerCount} 空闲{idleFarmers}）</span></span>
+        <span className="text-stone-400">农民 <span className="text-stone-200 font-bold">{farmers.length}</span><span className="text-stone-600">（在岗{assignedFarmerCount} 空闲{idleFarmers}）</span></span>
         {pestPlots > 0 && <span className="text-red-400">🐛 虫害 {pestPlots}</span>}
         {lowWaterPlots > 0 && <span className="text-blue-400">💧 缺水 {lowWaterPlots}</span>}
         {expandQueue.length > 0 && <span className="text-blue-400">⛏ 开垦中 {expandQueue.length}</span>}
@@ -183,23 +181,25 @@ export default function FarmLeaderPanel({ game, onAction }) {
         <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-stone-300">农田概览</h3>
-            {/* 目标农田数 - 更大更醒目 */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-stone-400">目标</span>
-              <button onClick={() => handleTargetChange(-1)}
-                disabled={targetCount <= 0}
-                className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center disabled:opacity-30 transition-colors">
-                <Minus size={14} />
-              </button>
-              <span className="text-xl text-amber-400 font-bold w-8 text-center">{targetCount}</span>
-              <button onClick={() => handleTargetChange(1)}
-                className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center transition-colors">
-                <Plus size={14} />
-              </button>
+            {/* 目标农田数 */}
+            <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-stone-400">目标</span>
+                <button onClick={() => handleTargetChange(-1)}
+                  disabled={targetCount <= 0}
+                  className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center disabled:opacity-30 transition-colors">
+                  <Minus size={14} />
+                </button>
+                <span className="text-xl text-amber-400 font-bold w-8 text-center">{targetCount}</span>
+                <button onClick={() => handleTargetChange(1)}
+                  className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center transition-colors">
+                  <Plus size={14} />
+                </button>
+              </div>
+              {targetCount > totalPlots + expandQueue.length && (
+                <span className="text-blue-400 text-xs">待开垦 {targetCount - totalPlots - expandQueue.length}</span>
+              )}
             </div>
-            {targetCount > totalPlots + expandQueue.length && (
-              <span className="text-blue-400 text-xs mt-1 text-right">待开垦 {targetCount - totalPlots - expandQueue.length}</span>
-            )}
           </div>
           <div className="flex flex-wrap gap-3">
             {plots.map(plot => (
