@@ -233,7 +233,7 @@ export default function GameApp() {
           {/* 多角色子tab */}
           {activeTab === 'farm' && showFarmSubTabs && (
             <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
-              {farmSubTabs.map(r => {
+              {farmRoles.map(r => {
                 const info = ROLE_TAB_MAP[r] || { label: r, icon: '👤' };
                 const active = currentRoleTab === r;
                 return (
