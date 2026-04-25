@@ -1,17 +1,7 @@
 import { useState } from 'react';
 import { BASE_ATTRIBUTES, KNOWLEDGE_ATTRIBUTES, getMoodInfo } from '../engine/Character';
+import { getRoleInfo } from '../data/roles';
 import { User, Lock, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
-
-const ROLE_LABELS = {
-  farmer: { name: '农民', icon: '🌾', color: 'text-green-400' },
-  farmer_leader: { name: '农民队长', icon: '👨‍🌾', color: 'text-amber-400' },
-  scholar: { name: '学者', icon: '📖', color: 'text-blue-400' },
-  trader: { name: '商人', icon: '💰', color: 'text-amber-400' },
-  crafter: { name: '工匠', icon: '🔨', color: 'text-orange-400' },
-  soldier: { name: '士兵', icon: '⚔️', color: 'text-red-400' },
-  advisor: { name: '谋士', icon: '🧠', color: 'text-purple-400' },
-  leader: { name: '领袖', icon: '👑', color: 'text-yellow-400' },
-};
 
 function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) {
   return (
@@ -32,7 +22,7 @@ function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) 
 function CharacterCard({ character, expanded, onToggle }) {
   const canSee = character.canSeeAttributes();
   const primaryRole = character.roles[0] || 'farmer';
-  const roleInfo = ROLE_LABELS[primaryRole] || { name: primaryRole, icon: '👤', color: 'text-stone-400' };
+  const roleInfo = getRoleInfo(primaryRole);
   const moodInfo = getMoodInfo(character.mood);
 
   return (
@@ -47,7 +37,7 @@ function CharacterCard({ character, expanded, onToggle }) {
           <div className="flex items-center gap-2">
             <span className="text-sm text-stone-200 font-medium">{character.name}</span>
             {character.roles.map(r => {
-              const ri = ROLE_LABELS[r] || { name: r, icon: '👤', color: 'text-stone-400' };
+              const ri = getRoleInfo(r);
               return <span key={r} className={`text-xs ${ri.color}`}>{ri.name}</span>;
             })}
             {character.isPlayer && (
@@ -186,7 +176,7 @@ export default function CharacterPanel({ game }) {
       {/* 身份标签栏 */}
       <div className="flex gap-2 mb-4 flex-wrap">
         {roleKeys.map(roleKey => {
-          const info = ROLE_LABELS[roleKey] || { name: roleKey, icon: '👤', color: 'text-stone-400' };
+          const info = getRoleInfo(roleKey);
           const count = roleGroups[roleKey].length;
           const isActive = activeRole === roleKey;
           return (

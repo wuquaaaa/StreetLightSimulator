@@ -6,9 +6,28 @@
 import { Character } from './Character';
 import { FarmSystem, FarmPlot } from './FarmSystem';
 import { WarehouseSystem } from './WarehouseSystem';
+import {
+  TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, FOOD_PER_PERSON, WINTER_FREEZE_CHANCE,
+  NPC_WATER_THRESHOLD, NPC_WEED_THRESHOLD, NPC_FERTILITY_THRESHOLD,
+} from './constants';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
+
+// NPC 名字池（统一管理，避免重复定义）
+const NPC_NAMES = [
+  '张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
+  '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英',
+  '徐大宝', '宋小美', '冯铁蛋', '褚翠花', '卫大山', '蒋小龙', '沈秋菊', '韩冬梅',
+];
+
+// 角色名称映射（统一管理，避免分散在多个文件）
+export const ROLE_DISPLAY_NAMES = {
+  farmer: '农民',
+  farmer_leader: '农民队长',
+  scholar: '学者',
+  trader: '商人',
+};
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -17,7 +36,7 @@ export class GameState {
     this.season = '春';
 
     this.population = 1;
-    this.foodPerPerson = 2;
+    this.foodPerPerson = FOOD_PER_PERSON;
 
     this.player = new Character({ name: playerName, roles: ['farmer'], isPlayer: true });
     this.characters = []; // NPC角色列表
@@ -40,7 +59,7 @@ export class GameState {
   }
 
   get tickProgress() {
-    return (this.tickCount % 10) / 10;
+    return (this.tickCount % TICKS_PER_DAY) / TICKS_PER_DAY;
   }
 
   get dailyFoodConsumption() {
@@ -50,14 +69,13 @@ export class GameState {
   tick() {
     this.tickCount++;
 
-    // 每10个tick算一天
-    if (this.tickCount % 10 === 0) {
+    // 每 TICKS_PER_DAY 个 tick 算一天
+    if (this.tickCount % TICKS_PER_DAY === 0) {
       this.day++;
 
       // 季节
-      const seasonIndex = Math.floor((this.day - 1) / 7) % 4;
-      const seasons = ['春', '夏', '秋', '冬'];
-      const newSeason = seasons[seasonIndex];
+      const seasonIndex = Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length;
+      const newSeason = SEASONS[seasonIndex];
       if (newSeason !== this.season) {
         this.season = newSeason;
         this.addLog(`季节变化：进入了${this.season}季`);
@@ -94,7 +112,7 @@ export class GameState {
     }
 
     // 农田tick（传入是否新的一天）
-    const isNewDay = this.tickCount % 10 === 0;
+    const isNewDay = this.tickCount % TICKS_PER_DAY === 0;
     const farmEvents = this.farm.tick(isNewDay);
     for (const evt of farmEvents) {
       if (evt.type === 'ready') {
@@ -134,9 +152,9 @@ export class GameState {
     this._autoFarmWork();
 
     // 冬天冻害
-    if (this.season === '冬' && this.tickCount % 10 === 0) {
+    if (this.season === '冬' && this.tickCount % TICKS_PER_DAY === 0) {
       for (const plot of this.farm.plots) {
-        if (plot.state === 'growing' && Math.random() < 0.1) {
+        if (plot.state === 'growing' && Math.random() < WINTER_FREEZE_CHANCE) {
           plot.state = 'withered';
           this.addLog('严寒使一块作物冻死了');
         }
@@ -201,28 +219,14 @@ export class GameState {
         result = this.warehouse.upgradeWarehouse(params.category);
         break;
       case 'recruit_accept': {
-        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
-          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英'];
-        const name = CHINESE_NAMES[Math.floor(Math.random() * CHINESE_NAMES.length)];
-        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
-        npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
-        this.characters.push(npc);
-        this.population++;
+        const { name } = this._createNPCFarmer();
         this.triggeredEvents['recruit'] = 'accepted';
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
-        // 玩家身份变化的选择由UI触发
         result = { success: true, message: `${name}加入了`, npcName: name };
         break;
       }
       case 'recruit_accept_with_promote': {
-        // 原子操作：招募NPC + 玩家升为农民队长，一次完成
-        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
-          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英'];
-        const name = CHINESE_NAMES[Math.floor(Math.random() * CHINESE_NAMES.length)];
-        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
-        npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
-        this.characters.push(npc);
-        this.population++;
+        const { name } = this._createNPCFarmer();
         this.triggeredEvents['recruit'] = 'accepted';
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
         // 自动成为农民队长+农民
@@ -266,29 +270,14 @@ export class GameState {
         }
         break;
       case 'leader_recruit': {
-        const CHINESE_NAMES = ['张三', '李四', '王五', '赵六', '孙七', '周八', '吴九', '郑十',
-          '陈大壮', '刘小花', '杨铁柱', '黄翠兰', '马大力', '朱小妹', '林阿牛', '何秀英',
-          '徐大宝', '宋小美', '冯铁蛋', '褚翠花', '卫大山', '蒋小龙', '沈秋菊', '韩冬梅'];
-        // 避免重名
-        const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-        const available = CHINESE_NAMES.filter(n => !existing.has(n));
-        const name = available.length > 0
-          ? available[Math.floor(Math.random() * available.length)]
-          : `农民${this.characters.length + 2}号`;
-        const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
-        npc.knowledgeAttributes.farming = 1 + Math.floor(Math.random() * 5);
-        this.characters.push(npc);
-        this.population++;
+        const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
         result = { success: true, message: `${name}加入了你的队伍` };
         break;
       }
       case 'set_player_roles':
         if (params.roles && Array.isArray(params.roles)) {
           this.player.roles = params.roles;
-          const roleNames = params.roles.map(r => {
-            const map = { farmer: '农民', farmer_leader: '农民队长', scholar: '学者', trader: '商人' };
-            return map[r] || r;
-          }).join('、');
+          const roleNames = params.roles.map(r => ROLE_DISPLAY_NAMES[r] || r).join('、');
           this.addLog(`你现在的身份是：${roleNames}`);
           result = { success: true, message: `身份已更新` };
         } else {
@@ -310,6 +299,30 @@ export class GameState {
   _getAllFarmers() {
     const all = [this.player, ...this.characters];
     return all.filter(c => c.hasRole('farmer'));
+  }
+
+  /**
+   * 创建一个随机农民 NPC 并加入队伍
+   * @param {{ minKnowledge?: number, avoidExistingNames?: boolean }} opts
+   * @returns {{ npc: Character, name: string }}
+   */
+  _createNPCFarmer(opts = {}) {
+    const { minKnowledge = 3, avoidExistingNames = false } = opts;
+    let name;
+    if (avoidExistingNames) {
+      const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
+      const available = NPC_NAMES.filter(n => !existing.has(n));
+      name = available.length > 0
+        ? available[Math.floor(Math.random() * available.length)]
+        : `农民${this.characters.length + 2}号`;
+    } else {
+      name = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)];
+    }
+    const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
+    npc.knowledgeAttributes.farming = minKnowledge + Math.floor(Math.random() * 5);
+    this.characters.push(npc);
+    this.population++;
+    return { npc, name };
   }
 
   // NPC农民自动劳作：每tick根据工作速率执行操作
@@ -357,19 +370,19 @@ export class GameState {
       }
     }
     for (const plot of plots) {
-      if (plot.waterLevel < 50) {
+      if (plot.waterLevel < NPC_WATER_THRESHOLD) {
         this.farm.water(plot.id, npc);
         return;
       }
     }
     for (const plot of plots) {
-      if (plot.weedGrowth > 50) {
+      if (plot.weedGrowth > NPC_WEED_THRESHOLD) {
         this.farm.removeWeeds(plot.id, npc);
         return;
       }
     }
     for (const plot of plots) {
-      if (plot.fertility < 50) {
+      if (plot.fertility < NPC_FERTILITY_THRESHOLD) {
         this.farm.fertilize(plot.id, npc);
         return;
       }

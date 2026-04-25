@@ -1,12 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Wheat, Users } from 'lucide-react';
-
-const ROLE_MAP = {
-  farmer: { name: '农民', icon: '🌾', color: 'text-green-400', bg: 'bg-green-900/30 border-green-700/40' },
-  farmer_leader: { name: '农民队长', icon: '👨‍🌾', color: 'text-amber-400', bg: 'bg-amber-900/30 border-amber-700/40' },
-  scholar: { name: '学者', icon: '📖', color: 'text-blue-400', bg: 'bg-blue-900/30 border-blue-700/40' },
-  trader: { name: '商人', icon: '💰', color: 'text-yellow-400', bg: 'bg-yellow-900/30 border-yellow-700/40' },
-};
+import { getRoleInfo } from '../data/roles';
 
 // 当前可切换的所有身份（后续解锁更多）
 const ALL_AVAILABLE_ROLES = ['farmer', 'farmer_leader'];
@@ -124,7 +118,7 @@ function RoleDropdown({ player, game, onToggleRole, onClose }) {
       <div className="text-xs text-stone-400 mb-2">点击添加/移除身份（可多选，至少保留一个）</div>
       <div className="space-y-1.5">
         {displayRoles.map(r => {
-          const info = ROLE_MAP[r] || { name: r, icon: '👤', color: 'text-stone-400', bg: 'bg-stone-700/30 border-stone-600/40' };
+          const info = getRoleInfo(r);
           const active = player.roles.includes(r);
           const locked = !unlockedRoles.includes(r);
           return (
@@ -198,7 +192,7 @@ export default function TopBar({ game, onAction }) {
           <span className="text-stone-500 text-xs">{game.player.name}</span>
           <div className="flex gap-1 cursor-pointer" onClick={() => setShowRoleDropdown(!showRoleDropdown)}>
             {game.player.roles.map(r => {
-              const info = ROLE_MAP[r] || { name: r, icon: '👤', color: 'text-stone-400' };
+              const info = getRoleInfo(r);
               return (
                 <span key={r} className={`text-xs px-1.5 py-0.5 rounded bg-stone-800 ${info.color} hover:ring-1 hover:ring-stone-500 transition-all`}>
                   {info.icon} {info.name}

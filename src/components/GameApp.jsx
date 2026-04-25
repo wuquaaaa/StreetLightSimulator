@@ -10,12 +10,8 @@ import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
+import { getRoleInfo } from '../data/roles';
 import { Wheat, Package, User, Pause, Play, Save, Download, Music } from 'lucide-react';
-
-const ROLE_TAB_MAP = {
-  farmer: { label: '农田', icon: '🌾' },
-  farmer_leader: { label: '管理', icon: '👨‍🌾' },
-};
 
 const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
@@ -238,7 +234,7 @@ export default function GameApp() {
           {activeTab === 'farm' && showFarmSubTabs && (
             <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
               {farmRoles.map(r => {
-                const info = ROLE_TAB_MAP[r] || { label: r, icon: '👤' };
+                const info = getRoleInfo(r);
                 const active = currentRoleTab === r;
                 return (
                   <button
@@ -250,7 +246,7 @@ export default function GameApp() {
                         : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
                     }`}
                   >
-                    {info.icon} {info.label}
+                    {info.icon} {info.tabLabel}
                   </button>
                 );
               })}
