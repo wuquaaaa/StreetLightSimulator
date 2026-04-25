@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Minus, UserPlus, Trash2 } from 'lucide-react';
 import { FIELD_STATE } from '../engine/FarmSystem';
 import { getMoodInfo } from '../engine/Character';
@@ -95,7 +95,15 @@ function calcDailyYieldEstimate(plots) {
 export default function FarmLeaderPanel({ game, onAction }) {
   const [selectedPlot, setSelectedPlot] = useState(null);
   const plots = game.farm.plots;
-  const farmers = [game.player, ...game.characters].filter(c => c.hasRole('farmer'));
+  const farmers = game.characters.filter(c => c.hasRole('farmer'));
+
+  // 切换到队长视角时，自动将目标农田数同步为当前实际农田数
+  useEffect(() => {
+    if (game.farm.targetPlotCount < plots.length) {
+      game.farm.targetPlotCount = plots.length;
+      if (onAction) onAction('set_target_plots', { count: plots.length });
+    }
+  }, []);
 
   const totalPlots = plots.length;
   const growingPlots = plots.filter(p => p.state === FIELD_STATE.GROWING || p.state === FIELD_STATE.PLANTED).length;
@@ -114,8 +122,10 @@ export default function FarmLeaderPanel({ game, onAction }) {
   }
 
   const dailyYield = calcDailyYieldEstimate(plots);
+  // 统计用：包含玩家在内的全部农民
+  const allFarmers = [game.player, ...game.characters].filter(c => c.hasRole('farmer'));
   const assignedFarmerCount = new Set(plots.flatMap(p => Array.isArray(p.assignedTo) ? p.assignedTo : (p.assignedTo ? [p.assignedTo] : []))).size;
-  const idleFarmers = farmers.filter(f => {
+  const idleFarmers = allFarmers.filter(f => {
     const hasPlots = game.farm.getPlotsForCharacter(f.id).length > 0;
     const isExpanding = game.farm.expandQueue.find(q => q.characterId === f.id);
     return !hasPlots && !isExpanding;
@@ -162,7 +172,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
         <span className="text-stone-400">预计总产 <span className="text-amber-400 font-bold">{estimatedHarvest}</span></span>
         <span className="text-stone-400">日均产量 <span className="text-amber-300 font-bold">≈{dailyYield.toFixed(1)}</span></span>
         <span className="text-stone-400">平均肥力 <span className="text-green-400 font-bold">{avgFertility}</span></span>
-        <span className="text-stone-400">农民 <span className="text-stone-200 font-bold">{farmers.length}</span><span className="text-stone-600">（在岗{assignedFarmerCount} 空闲{idleFarmers}）</span></span>
+        <span className="text-stone-400">农民 <span className="text-stone-200 font-bold">{allFarmers.length}</span><span className="text-stone-600">（在岗{assignedFarmerCount} 空闲{idleFarmers}）</span></span>
         {pestPlots > 0 && <span className="text-red-400">🐛 虫害 {pestPlots}</span>}
         {lowWaterPlots > 0 && <span className="text-blue-400">💧 缺水 {lowWaterPlots}</span>}
         {expandQueue.length > 0 && <span className="text-blue-400">⛏ 开垦中 {expandQueue.length}</span>}
@@ -186,10 +196,10 @@ export default function FarmLeaderPanel({ game, onAction }) {
                 className="w-7 h-7 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 flex items-center justify-center transition-colors">
                 <Plus size={14} />
               </button>
-              {targetCount > totalPlots + expandQueue.length && (
-                <span className="text-blue-400 text-xs">待开垦 {targetCount - totalPlots - expandQueue.length}</span>
-              )}
             </div>
+            {targetCount > totalPlots + expandQueue.length && (
+              <span className="text-blue-400 text-xs mt-1 text-right">待开垦 {targetCount - totalPlots - expandQueue.length}</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-3">
             {plots.map(plot => (
@@ -242,22 +252,22 @@ export default function FarmLeaderPanel({ game, onAction }) {
               })()}
               <div className="text-xs text-stone-400 mb-1">管理者：</div>
               <div className="flex flex-wrap gap-1">
-                {/* 已分配的角色 */}
-                {selectedAssignedIds.map(cid => {
+                {/* 已分配的角色（排除玩家） */}
+                {selectedAssignedIds.filter(cid => cid !== game.player.id).map(cid => {
                   const f = farmers.find(f => f.id === cid);
                   return (
                     <span key={cid} className="px-2 py-1 bg-green-900/40 text-green-300 rounded text-xs flex items-center gap-1">
-                      {f?.name || '未知'}{f?.isPlayer ? '(你)' : ''}
+                      {f?.name || '未知'}
                       <button onClick={() => handleUnassign(selectedPlotData.id, cid)}
                         className="text-red-400 hover:text-red-300 ml-1">✕</button>
                     </span>
                   );
                 })}
-                {/* 可分配的角色（排除已分配的） */}
+                {/* 可分配的角色（排除已分配的和玩家） */}
                 {farmers.filter(f => !selectedAssignedIds.includes(f.id)).map(f => (
                   <button key={f.id} onClick={() => handleAssign(selectedPlotData.id, f.id)}
                     className="px-2 py-1 bg-stone-700/50 hover:bg-stone-600/50 text-stone-300 rounded text-xs transition-colors">
-                    +{f.name}{f.isPlayer ? '(你)' : ''}
+                    +{f.name}
                   </button>
                 ))}
               </div>
@@ -286,12 +296,9 @@ export default function FarmLeaderPanel({ game, onAction }) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-stone-200">{farmer.name}</span>
-                    {farmer.isPlayer && <span className="text-[10px] px-1 py-0.5 bg-amber-900/40 text-amber-400 rounded">你</span>}
                   </div>
-                  {/* 心情：玩家不展示，NPC展示更大图标 */}
-                  {!farmer.isPlayer && (
-                    <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
-                  )}
+                  {/* 心情 */}
+                  <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-[10px] text-stone-500">
                   <span>耕种 {Math.floor(farmer.knowledgeAttributes.farming)}</span>
