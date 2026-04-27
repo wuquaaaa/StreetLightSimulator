@@ -14,6 +14,7 @@ import { NPC_NAMES } from '../data/names';
 import { getRoleName } from '../data/roles';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
+  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS,
 } from './constants';
 
 // 纯委托映射：action → { target, method }
@@ -58,6 +59,11 @@ export class GameState {
     // 初始物资
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
+
+    // 招募系统：队长去村庄招募
+    this.recruitQueue = [];        // 进行中的招募任务 [{ticksRemaining, totalTicks}]
+    this.recruitPool = RECRUIT_POOL_MAX; // 村庄剩余可招募人数
+    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS; // 招募池刷新倒计时（tick）
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -162,6 +168,9 @@ export class GameState {
     // NPC农民自动劳作
     this.npcAI.tickAutoWork(this.characters, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
+    // 招募队列处理
+    this._tickRecruit();
+
     // 冬天冻害
     if (this.season === '冬' && this.tickCount % TICKS_PER_DAY === 0) {
       const damagedCount = this.farm.applyWinterDamage(WINTER_FREEZE_CHANCE);
@@ -220,8 +229,25 @@ export class GameState {
         result = { success: true, message: '拒绝了招工请求' };
         break;
       case 'leader_recruit': {
-        const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
-        result = { success: true, message: `${name}加入了你的队伍` };
+        // 异步招募：检查食物+招募池+队列
+        if (this.recruitQueue.length >= 2) {
+          result = { success: false, message: '已有招募任务进行中，无法同时招募更多人' };
+          break;
+        }
+        if (this.recruitPool <= 0) {
+          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了，等待一段时间再说吧' };
+          break;
+        }
+        const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
+        if (foodAmount < RECRUIT_FOOD_COST) {
+          result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
+          break;
+        }
+        // 扣除食物、扣除招募池、加入队列
+        this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+        this.recruitPool--;
+        this.recruitQueue.push({ ticksRemaining: RECRUIT_TICKS, totalTicks: RECRUIT_TICKS });
+        result = { success: true, message: `你出发去附近的村庄招募...消耗了 ${RECRUIT_FOOD_COST} 单位小麦，大约 ${RECRUIT_TICKS / TICKS_PER_DAY} 天后带回新人` };
         break;
       }
       case 'set_player_roles':
@@ -277,6 +303,33 @@ export class GameState {
   _getAllFarmers() {
     const all = [this.player, ...this.characters];
     return all.filter(c => c.hasRole('farmer'));
+  }
+
+  /**
+   * 每tick处理招募队列
+   */
+  _tickRecruit() {
+    // 招募池自动刷新
+    if (this.recruitPool < RECRUIT_POOL_MAX) {
+      this.recruitPoolRefreshTicks--;
+      if (this.recruitPoolRefreshTicks <= 0) {
+        this.recruitPool = RECRUIT_POOL_MAX;
+        this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
+        this.addLog('附近的村庄又有人愿意跟你了。');
+      }
+    }
+
+    // 处理进行中的招募
+    this.recruitQueue = this.recruitQueue.filter(task => {
+      task.ticksRemaining--;
+      if (task.ticksRemaining <= 0) {
+        // 招募完成，创建NPC
+        const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
+        this.addLog(`${name}加入了你的队伍！`);
+        return false;
+      }
+      return true;
+    });
   }
 
   /**

@@ -4,6 +4,8 @@
  * 从 GameState 中提取，负责序列化/反序列化、存取档位管理。
  */
 
+import { RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS } from './constants';
+
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
 
@@ -34,6 +36,10 @@ export const SaveSystem = {
         storage: {},
       },
       log: game.log.slice(-50),
+      // 招募系统
+      recruitQueue: game.recruitQueue.map(t => ({ ...t })),
+      recruitPool: game.recruitPool,
+      recruitPoolRefreshTicks: game.recruitPoolRefreshTicks,
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -85,6 +91,11 @@ export const SaveSystem = {
         }
       }
     }
+
+    // 招募系统（兼容旧存档）
+    game.recruitQueue = data.recruitQueue || [];
+    game.recruitPool = data.recruitPool ?? RECRUIT_POOL_MAX;
+    game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? RECRUIT_POOL_REFRESH_TICKS;
 
     game.addLog('存档已加载');
     return game;
