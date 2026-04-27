@@ -10,8 +10,10 @@ import { SaveSystem } from './SaveSystem';
 import { NPCAISystem } from './NPCAISystem';
 import { FoodSystem } from './FoodSystem';
 import { EventSystem } from './EventSystem';
-import { NPC_NAMES } from '../data/names';
+import { NPC_NAMES, MALE_NAMES, FEMALE_NAMES, generateAppearance } from '../data/names';
 import { getRoleName } from '../data/roles';
+import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
+import { rollFate } from '../data/fates';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
   RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS,
@@ -46,7 +48,10 @@ export class GameState {
     this.tickCount = 0;
     this.season = '春';
 
-    this.player = new Character({ name: playerName, roles: ['farmer'], isPlayer: true });
+    this.player = new Character({
+      name: playerName, roles: ['farmer'], isPlayer: true,
+      gender: 'male', age: 25,
+    });
     this.characters = []; // NPC角色列表
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
@@ -147,6 +152,18 @@ export class GameState {
       if (foodResult.moodDelta !== 0) {
         this.player.changeMood(foodResult.moodDelta);
       }
+
+      // NPC 揭示进度更新（每天推进 TICKS_PER_DAY 个 tick）
+      for (const npc of this.characters) {
+        if (!npc.isRetired) {
+          npc.updateRevealProgress(TICKS_PER_DAY);
+        }
+      }
+
+      // 每年（28天）推进 NPC 年龄 + 退休检查
+      if (this.day > 1 && (this.day - 1) % 28 === 0) {
+        this._tickAging();
+      }
     }
 
     // 农田tick（传入是否新的一天 + 当前季节）
@@ -189,11 +206,12 @@ export class GameState {
       }
     }
 
-    // NPC农民自动劳作（排除正在招募中的 NPC）
+    // NPC农民自动劳作（排除正在招募中 + 已退休的 NPC）
     const recruitingIds = this.recruitingNPCIds;
-    const availableNPCs = recruitingIds.size > 0
-      ? this.characters.filter(c => !recruitingIds.has(c.id))
-      : this.characters;
+    let availableNPCs = this.characters.filter(c => !c.isRetired);
+    if (recruitingIds.size > 0) {
+      availableNPCs = availableNPCs.filter(c => !recruitingIds.has(c.id));
+    }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
     // 招募队列处理
@@ -345,16 +363,12 @@ export class GameState {
           break;
         }
         const chosen = this.recruitCandidates[candidateIndex];
-        // 创建 NPC
-        const npc = new Character({ name: chosen.name, roles: ['farmer'], isPlayer: false });
-        npc.knowledgeAttributes.farming = chosen.farming;
-        npc.age = chosen.age;
-        this.characters.push(npc);
-        this.population++;
+        // 使用候选人完整数据创建 NPC
+        const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
         this.recruitPool--;
         this.recruitTask = null;
         this.recruitCandidates = [];
-        result = { success: true, message: `${chosen.name}（${chosen.age}岁）加入了你的队伍！耕种能力 ${chosen.farming}` };
+        result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）加入了你的队伍！` };
         break;
       }
       case 'recruit_skip': {
@@ -425,22 +439,47 @@ export class GameState {
 
   /**
    * 生成候选人列表（亲自招募到达村庄后调用）
+   * 候选人包含：名字、性别、年龄、出身、特质、外貌
    */
   _generateCandidates() {
     const candidates = [];
     const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-    const available = NPC_NAMES.filter(n => !existing.has(n));
 
-    const personalities = ['老实', '勤劳', '随和', '内向', '开朗', '沉稳'];
+    for (let i = 0; i < RECRUIT_CANDIDATE_COUNT; i++) {
+      // 性别
+      const gender = Math.random() < 0.55 ? 'male' : 'female';
+      const namePool = gender === 'male' ? MALE_NAMES : FEMALE_NAMES;
+      const available = namePool.filter(n => !existing.has(n));
+      if (available.length === 0) break;
 
-    for (let i = 0; i < RECRUIT_CANDIDATE_COUNT && available.length > 0; i++) {
       const nameIdx = Math.floor(Math.random() * available.length);
-      const name = available.splice(nameIdx, 1)[0];
+      const name = available[nameIdx];
+      existing.add(name);
+
+      // 年龄
+      const age = 18 + Math.floor(Math.random() * 35);
+
+      // 出身特质
+      const originTrait = rollOriginTrait();
+
+      // 通用特质
+      const generalTraits = rollGeneralTraits(Math.random() < 0.3 ? 2 : 1);
+
+      // 命格（招募时不可见，但已确定）
+      const fate = rollFate();
+
+      // 外貌
+      const appearance = generateAppearance(gender, age);
+
+      // 耕种能力（基于出身+随机，作为初始值展示）
+      const farming = Math.max(1, originTrait.effects?.farmingBonus || 0) + Math.floor(Math.random() * 8);
+
       candidates.push({
-        name,
-        age: 18 + Math.floor(Math.random() * 35), // 18-52 岁
-        farming: 1 + Math.floor(Math.random() * 8), // 1-8
-        personality: personalities[Math.floor(Math.random() * personalities.length)],
+        name, gender, age, farming,
+        originTrait,
+        generalTraits,
+        fate,
+        appearance,
       });
     }
     return candidates;
@@ -483,24 +522,73 @@ export class GameState {
   }
 
   /**
+   * 每年推进 NPC 年龄 + 退休检查
+   */
+  _tickAging() {
+    for (const npc of this.characters) {
+      npc.age++;
+      // 检查是否到达退休年龄
+      if (npc.age >= npc.retireAge && !npc.isRetired) {
+        this.addLog(`${npc.name}（${npc.gender === 'male' ? '男' : '女'}，${npc.age}岁）已经到了退休的年纪，不再参与劳作了。`);
+      }
+    }
+    // 玩家也 aging
+    this.player.age++;
+  }
+
+  /**
    * 创建一个随机农民 NPC 并加入队伍
-   * @param {{ minKnowledge?: number, avoidExistingNames?: boolean }} opts
+   * @param {{ minKnowledge?: number, avoidExistingNames?: boolean, candidateData?: object }} opts
    * @returns {{ npc: Character, name: string }}
    */
   _createNPCFarmer(opts = {}) {
-    const { minKnowledge = 3, avoidExistingNames = false } = opts;
+    const { minKnowledge = 3, avoidExistingNames = false, candidateData } = opts;
+
+    // 性别 & 名字
+    const gender = candidateData?.gender || (Math.random() < 0.55 ? 'male' : 'female');
+    const namePool = gender === 'male' ? MALE_NAMES : FEMALE_NAMES;
     let name;
-    if (avoidExistingNames) {
+    if (candidateData?.name) {
+      name = candidateData.name;
+    } else if (avoidExistingNames) {
       const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-      const available = NPC_NAMES.filter(n => !existing.has(n));
+      const available = namePool.filter(n => !existing.has(n));
       name = available.length > 0
         ? available[Math.floor(Math.random() * available.length)]
-        : `农民${this.characters.length + 2}号`;
+        : `${gender === 'male' ? '农民' : '农妇'}${this.characters.length + 2}号`;
     } else {
-      name = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)];
+      name = namePool[Math.floor(Math.random() * namePool.length)];
     }
-    const npc = new Character({ name, roles: ['farmer'], isPlayer: false });
-    npc.knowledgeAttributes.farming = minKnowledge + Math.floor(Math.random() * 5);
+
+    // 年龄
+    const age = candidateData?.age || (18 + Math.floor(Math.random() * 35));
+
+    // 出身特质（必须有一个）
+    const originTrait = candidateData?.originTrait || rollOriginTrait();
+
+    // 通用特质（0-2个）
+    const generalTraits = candidateData?.generalTraits || rollGeneralTraits(Math.random() < 0.4 ? 2 : 1);
+    const allTraits = [originTrait, ...generalTraits];
+
+    // 命格（隐藏）
+    const fate = candidateData?.fate || rollFate();
+
+    // 外貌
+    const appearance = candidateData?.appearance || generateAppearance(gender, age);
+
+    // 创建角色
+    const npc = new Character({
+      name, roles: ['farmer'], isPlayer: false,
+      gender, age, originTrait, traits: allTraits, fate, appearance,
+    });
+
+    // 如果有候选人的耕种经验，覆盖
+    if (candidateData?.farming) {
+      npc.knowledgeAttributes.farming = candidateData.farming;
+    } else {
+      npc.knowledgeAttributes.farming = minKnowledge + Math.floor(Math.random() * 5);
+    }
+
     this.characters.push(npc);
     this.population++;
     return { npc, name };

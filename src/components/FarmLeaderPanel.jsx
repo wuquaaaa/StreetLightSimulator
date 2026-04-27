@@ -236,11 +236,13 @@ function PersonnelTab({ game }) {
     Array.isArray(p.assignedTo) ? p.assignedTo : (p.assignedTo ? [p.assignedTo] : [])
   )).size;
   const idleFarmers = farmers.filter(f => {
+    if (f.isRetired) return false;
     const hasPlots = game.farm.getPlotsForCharacter(f.id).length > 0;
     const isExpanding = game.farm.expandQueue.find(q => q.characterId === f.id);
     const isRecruiting = recruitingIds.has(f.id);
     return !hasPlots && !isExpanding && !isRecruiting;
   }).length;
+  const retiredCount = farmers.filter(f => f.isRetired).length;
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
@@ -254,6 +256,7 @@ function PersonnelTab({ game }) {
           在岗 <span className="text-green-400 font-bold">{assignedFarmerCount}</span>
           {' / '}
           空闲 <span className="text-stone-300 font-bold">{idleFarmers}</span>
+          {retiredCount > 0 && <>{' / '}<span className="text-stone-600">退休 {retiredCount}</span></>}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -263,16 +266,46 @@ function PersonnelTab({ game }) {
           const isExpanding = game.farm.expandQueue.find(q => q.characterId === farmer.id);
           const isRecruiting = recruitingIds.has(farmer.id);
           const speed = farmer.getDisplaySpeed();
+          const genderIcon = farmer.gender === 'female' ? '♀' : '♂';
+          const farmingRevealed = farmer.isAttributeRevealed('farming');
+
           return (
-            <div key={farmer.id} className={`p-2 rounded-lg bg-stone-900/30 border ${isRecruiting ? 'border-amber-700/50 bg-amber-900/10' : 'border-stone-700/30'}`}>
+            <div key={farmer.id} className={`p-2 rounded-lg border ${
+              farmer.isRetired ? 'border-stone-800/30 bg-stone-900/20 opacity-60'
+              : isRecruiting ? 'border-amber-700/50 bg-amber-900/10'
+              : 'border-stone-700/30 bg-stone-900/30'
+            }`}>
+              {/* 第一行：名字 + 心情 */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-stone-200">{farmer.name}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-stone-200">{farmer.name}</span>
+                  <span className="text-xs text-stone-500">{genderIcon} {farmer.age}岁</span>
+                </div>
                 <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
               </div>
+
+              {/* 第二行：特质标签 */}
+              {farmer.traits && farmer.traits.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 mt-1">
+                  {farmer.traits.map(t => (
+                    <span key={t.id} className="text-[9px] px-1 py-0.5 bg-stone-800 rounded text-stone-500" title={t.description}>
+                      {t.icon}{t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* 第三行：数据 + 状态 */}
               <div className="flex items-center gap-3 mt-1 text-[10px] text-stone-500">
-                <span>耕种 {Math.floor(farmer.knowledgeAttributes.farming)}</span>
+                {farmingRevealed ? (
+                  <span>🌾 {Math.floor(farmer.knowledgeAttributes.farming)}</span>
+                ) : (
+                  <span title={`揭示进度 ${Math.floor(farmer.getRevealProgress('farming') * 100)}%`}>🌾 ???</span>
+                )}
                 <span>速率 {speed.toFixed(1)}</span>
-                {isRecruiting ? (
+                {farmer.isRetired ? (
+                  <span className="text-stone-600">👴 已退休</span>
+                ) : isRecruiting ? (
                   <span className="text-amber-400">🚶 招募中</span>
                 ) : isExpanding ? (
                   <span className="text-blue-400">⛏ 开垦中</span>
@@ -282,6 +315,11 @@ function PersonnelTab({ game }) {
                   <span className="text-stone-600">空闲</span>
                 )}
               </div>
+
+              {/* 外貌描述 */}
+              {farmer.appearance && (
+                <div className="text-[9px] text-stone-600 mt-0.5 italic">{farmer.appearance}</div>
+              )}
             </div>
           );
         })}
@@ -498,7 +536,7 @@ function RecruitProgressCard({ label, sublabel, task }) {
 function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-amber-400">🏘 村民名单</h3>
           <button onClick={onSkip} className="text-stone-500 hover:text-stone-300 text-sm">离开</button>
@@ -510,8 +548,13 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
               key={i}
               className="p-3 bg-stone-800/50 rounded-lg border border-stone-700/30 hover:border-amber-600/50 transition-colors"
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-stone-200 font-medium">{c.name}</span>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-stone-200 font-medium">{c.name}</span>
+                  <span className="text-xs text-stone-500">
+                    {c.gender === 'female' ? '♀' : '♂'} {c.age}岁
+                  </span>
+                </div>
                 <button
                   onClick={() => onChoose(i)}
                   className="px-3 py-1 bg-green-800/60 hover:bg-green-700/60 text-green-300 rounded text-xs transition-colors flex items-center gap-1"
@@ -519,10 +562,32 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
                   选择 <ChevronRight size={12} />
                 </button>
               </div>
+
+              {/* 外貌 */}
+              {c.appearance && (
+                <div className="text-[10px] text-stone-600 italic mb-1">{c.appearance}</div>
+              )}
+
+              {/* 出身 + 特质 */}
+              <div className="flex flex-wrap gap-1 mb-1">
+                {c.originTrait && (
+                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
+                    {c.originTrait.icon} {c.originTrait.name}
+                  </span>
+                )}
+                {c.generalTraits?.map(t => (
+                  <span key={t.id} className="text-[9px] px-1.5 py-0.5 bg-stone-800 rounded text-stone-500" title={t.description}>
+                    {t.icon} {t.name}
+                  </span>
+                ))}
+              </div>
+
+              {/* 数据（耕种可见，其他隐藏） */}
               <div className="flex gap-3 text-xs text-stone-500">
-                <span>👤 {c.age}岁</span>
                 <span>🌾 耕种 {c.farming}</span>
-                <span>💬 {c.personality}</span>
+                <span>📖 学习力 ???</span>
+                <span>🎯 专注力 ???</span>
+                <span>💪 体质 ???</span>
               </div>
             </div>
           ))}
