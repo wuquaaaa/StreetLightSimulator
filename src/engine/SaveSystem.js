@@ -5,6 +5,7 @@
  */
 
 import { RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS } from './constants';
+import { ResearchSystem } from './ResearchSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -41,6 +42,8 @@ export const SaveSystem = {
       recruitPool: game.recruitPool,
       recruitPoolRefreshTicks: game.recruitPoolRefreshTicks,
       recruitCandidates: game.recruitCandidates || [],
+      // 研究系统
+      researchSystem: game.researchSystem.toJSON(),
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -98,6 +101,11 @@ export const SaveSystem = {
     game.recruitCandidates = data.recruitCandidates || [];
     game.recruitPool = data.recruitPool ?? RECRUIT_POOL_MAX;
     game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? RECRUIT_POOL_REFRESH_TICKS;
+
+    // 研究系统
+    if (data.researchSystem) {
+      game.researchSystem = ResearchSystem.fromJSON(data.researchSystem);
+    }
 
     game.addLog('存档已加载');
     return game;

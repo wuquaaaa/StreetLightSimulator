@@ -10,8 +10,11 @@ import { SaveSystem } from './SaveSystem';
 import { NPCAISystem } from './NPCAISystem';
 import { FoodSystem } from './FoodSystem';
 import { EventSystem } from './EventSystem';
+import { ResearchSystem } from './ResearchSystem';
 import { NPC_NAMES, generateName, generateAppearance } from '../data/names';
 import { getRoleName } from '../data/roles';
+import { getPostInfo } from '../data/posts';
+import { getGongfuInfo } from '../data/gongfu';
 import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import {
@@ -58,6 +61,7 @@ export class GameState {
     this.npcAI = new NPCAISystem();
     this.foodSystem = new FoodSystem();
     this.eventSystem = new EventSystem();
+    this.researchSystem = new ResearchSystem();
 
     // 事件系统（委托给 EventSystem，保留引用兼容旧存档）
     this.triggeredEvents = this.eventSystem.triggeredEvents;
@@ -214,6 +218,14 @@ export class GameState {
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
+    // 司务堂（研究系统）tick
+    if (this.researchSystem.unlocked) {
+      const researchMsgs = this.researchSystem.tick(this.characters);
+      for (const msg of researchMsgs.messages) {
+        this.addLog(msg);
+      }
+    }
+
     // 招募队列处理
     this._tickRecruit();
 
@@ -267,6 +279,7 @@ export class GameState {
         const { name } = this._createNPCFarmer();
         this.triggeredEvents['recruit'] = 'accepted';
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
+        this._tryUnlockResearch();
         result = { success: true, message: `${name}加入了`, npcName: name };
         break;
       }
@@ -276,6 +289,7 @@ export class GameState {
         this.addLog(`${name}加入了你的队伍！他是一个农民。`);
         this.player.roles = ['farmer_leader', 'farmer'];
         this.addLog('你现在的身份是：农民队长、农民');
+        this._tryUnlockResearch();
         result = { success: true, message: `${name}加入了，你成为了农民队长`, npcName: name };
         break;
       }
@@ -368,6 +382,7 @@ export class GameState {
         this.recruitPool--;
         this.recruitTask = null;
         this.recruitCandidates = [];
+        this._tryUnlockResearch();
         result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）加入了你的队伍！` };
         break;
       }
@@ -418,6 +433,96 @@ export class GameState {
         }
         // 执行升级
         result = this.farm.upgradeToSpirit(params.plotId, targetLevel);
+        break;
+      }
+
+      // ====== 司务堂（研究系统） actions ======
+      case 'research_post': {
+        // 研究解锁岗位
+        if (!this.researchSystem.unlocked) {
+          result = { success: false, message: '司务堂尚未开启' };
+          break;
+        }
+        const { postId } = params;
+        result = this.researchSystem.startPostResearch(postId);
+        break;
+      }
+      case 'start_gongfu_research': {
+        // 开始研究功法
+        if (!this.researchSystem.unlocked) {
+          result = { success: false, message: '司务堂尚未开启' };
+          break;
+        }
+        const { gongfuId } = params;
+        result = this.researchSystem.startGongfuResearch(gongfuId);
+        break;
+      }
+      case 'cancel_gongfu_research': {
+        // 取消功法研究（放弃当前进度）
+        if (!this.researchSystem.currentGongfuResearch) {
+          result = { success: false, message: '当前没有在研究功法' };
+          break;
+        }
+        const canceledGongfu = getGongfuInfo(this.researchSystem.currentGongfuResearch.gongfuId);
+        this.researchSystem.currentGongfuResearch = null;
+        result = { success: true, message: `停止了参悟「${canceledGongfu?.name}」` };
+        break;
+      }
+      case 'assign_post': {
+        // 任命 NPC 到岗位
+        if (!this.researchSystem.unlocked) {
+          result = { success: false, message: '司务堂尚未开启' };
+          break;
+        }
+        const { characterId, postId } = params;
+        const targetChar = this._findCharacter(characterId);
+        if (!targetChar) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        if (!this.researchSystem.isPostResearched(postId)) {
+          result = { success: false, message: '该岗位尚未研究解锁' };
+          break;
+        }
+        result = targetChar.assignPost(postId);
+        break;
+      }
+      case 'remove_post': {
+        // 移除 NPC 的岗位
+        const { characterId: charId, postId: rmPostId } = params;
+        const targetCharRm = this._findCharacter(charId);
+        if (!targetCharRm) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        result = targetCharRm.removePost(rmPostId);
+        break;
+      }
+      case 'start_learn_gongfu': {
+        // NPC 开始学习功法
+        if (!this.researchSystem.unlocked) {
+          result = { success: false, message: '司务堂尚未开启' };
+          break;
+        }
+        const { characterId: learnerId, gongfuId: learnGongfuId } = params;
+        const learner = this._findCharacter(learnerId);
+        if (!learner) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        const allChars = [this.player, ...this.characters];
+        result = this.researchSystem.startLearning(learnerId, learnGongfuId, learner, allChars);
+        break;
+      }
+      case 'cancel_learn_gongfu': {
+        // 取消 NPC 学习功法
+        const { characterId: cancelLearnerId } = params;
+        const cancelLearner = this._findCharacter(cancelLearnerId);
+        if (!cancelLearner) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        result = this.researchSystem.cancelLearning(cancelLearnerId, cancelLearner);
         break;
       }
       default:
@@ -514,8 +619,21 @@ export class GameState {
         this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
         this.recruitPool--;
         this.recruitTask = null;
+        this._tryUnlockResearch();
       }
     }
+  }
+
+  /**
+   * 尝试解锁研究系统（首次招募成功时调用）
+   */
+  _tryUnlockResearch() {
+    if (this.researchSystem.unlocked) return;
+    this.researchSystem.unlock();
+    this.player.roles = ['farmer_leader', 'farmer'];
+    this.addLog('你意识到只靠种地养不活这么多人。你开始思考分工与规矩……');
+    this.addLog('司务堂开启！你可以任命知客管理人事，研究新的岗位和功法。');
+    this.triggeredEvents['recruit'] = 'accepted';
   }
 
   /**
@@ -527,6 +645,11 @@ export class GameState {
       // 检查是否到达退休年龄
       if (npc.age >= npc.retireAge && !npc.isRetired) {
         this.addLog(`${npc.name}（${npc.gender === 'male' ? '男' : '女'}，${npc.age}岁）已经到了退休的年纪，不再参与劳作了。`);
+        // 退休清除功法和岗位
+        if (npc.learnedGongfu.length > 0) {
+          this.addLog(`${npc.name}所学的功法随之消散...`);
+        }
+        npc.onRetire();
       }
     }
     // 玩家也 aging
@@ -602,4 +725,5 @@ export class GameState {
   // 暴露给 SaveSystem 使用的反序列化辅助方法
   static _charFromJSON = Character.fromJSON;
   static _farmFromJSON = FarmSystem.fromJSON;
+  static _researchFromJSON = ResearchSystem.fromJSON;
 }

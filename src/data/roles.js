@@ -62,6 +62,14 @@ const ROLES = {
     bg: 'bg-yellow-900/30 border-yellow-700/40',
     tabLabel: '统治',
   },
+  // 司务堂岗位
+  zhike: {
+    name: '知客',
+    icon: '📋',
+    color: 'text-cyan-400',
+    bg: 'bg-cyan-900/30 border-cyan-700/40',
+    tabLabel: '司务堂',
+  },
 };
 
 // 默认回退样式

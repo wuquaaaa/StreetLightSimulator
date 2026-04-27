@@ -8,6 +8,7 @@
  */
 
 import { TRAIT_EFFECT_KEYS } from '../data/traits';
+import { POSTS, getPostInfo } from '../data/posts';
 
 // ====== 基础属性（发现层） ======
 export const BASE_ATTRIBUTES = {
@@ -125,6 +126,12 @@ export class Character {
 
     // 旧字段兼容
     this.attributesRevealed = false;
+
+    // ====== 岗位系统（司务堂） ======
+    // posts: NPC 担任的岗位列表（不含 farmer，farmer 由 roles 决定）
+    // 种地通过 hasRole('farmer') + hasFarmerPost() 判断
+    this.posts = [];             // ['zhike', 'fangshi', ...]
+    this.learnedGongfu = [];     // 已学会的功法 ID 列表（退休失效）
   }
 
   // 兼容旧代码
@@ -156,6 +163,103 @@ export class Character {
       return base + this.fate.modifiers.retireAgeDelay;
     }
     return base;
+  }
+
+  // ====== 岗位系统（司务堂） ======
+
+  /**
+   * 是否担任种地岗位（由 roles 决定 + 没有独占岗位）
+   */
+  get isFarmerPost() {
+    // 如果有独占岗位（铁道/妙手），不算农夫岗位
+    for (const postId of this.posts) {
+      const post = getPostInfo(postId);
+      if (post && post.exclusive) return false;
+    }
+    return this.hasRole('farmer');
+  }
+
+  /**
+   * 是否担任某个岗位
+   */
+  hasPost(postId) {
+    return this.posts.includes(postId);
+  }
+
+  /**
+   * 担任岗位的总精力消耗
+   */
+  get postEnergyCost() {
+    let cost = 0;
+    for (const postId of this.posts) {
+      const post = getPostInfo(postId);
+      if (post) cost += post.energyCost;
+    }
+    return Math.min(1.0, cost);
+  }
+
+  /**
+   * 种地岗位的精力比例
+   * 如果是农夫岗位且无独占岗位，剩余精力就是种地的
+   */
+  get farmEnergyRatio() {
+    if (!this.isFarmerPost) return 0;
+    const used = this.postEnergyCost;
+    return Math.max(0, 1.0 - used);
+  }
+
+  /**
+   * 任命岗位（检查精力上限）
+   * @returns {{ success: boolean, message: string }}
+   */
+  assignPost(postId) {
+    const post = getPostInfo(postId);
+    if (!post) return { success: false, message: '未知岗位' };
+
+    if (this.posts.includes(postId)) {
+      return { success: false, message: `已经担任${post.name}了` };
+    }
+
+    // 检查独占冲突
+    if (post.exclusive && this.posts.length > 0) {
+      return { success: false, message: `${post.name}是独占岗位，不能兼任其他岗位` };
+    }
+    // 检查已有独占岗位
+    const hasExclusive = this.posts.some(pid => {
+      const p = getPostInfo(pid);
+      return p && p.exclusive;
+    });
+    if (hasExclusive) {
+      return { success: false, message: '已有独占岗位，无法再担任其他岗位' };
+    }
+
+    // 检查精力是否溢出
+    const newCost = this.postEnergyCost + post.energyCost;
+    if (newCost > 1.0) {
+      return { success: false, message: '精力不足，无法再担任更多岗位' };
+    }
+
+    this.posts.push(postId);
+    return { success: true, message: `${this.name}被任命为${post.name}` };
+  }
+
+  /**
+   * 移除岗位
+   */
+  removePost(postId) {
+    const idx = this.posts.indexOf(postId);
+    if (idx < 0) return { success: false, message: '未担任该岗位' };
+    const post = getPostInfo(postId);
+    this.posts.splice(idx, 1);
+    return { success: true, message: `${this.name}被免去${post?.name || '岗位'}` };
+  }
+
+  /**
+   * 退休时清除功法
+   */
+  onRetire() {
+    this.learnedGongfu = [];
+    this.posts = [];
   }
 
   /**
@@ -201,7 +305,7 @@ export class Character {
   }
 
   /**
-   * 获取工作速率（含特质修正+年龄修正）
+   * 获取工作速率（含特质修正+年龄修正+岗位精力修正）
    */
   getFarmWorkSpeed() {
     const farming = this.knowledgeAttributes.farming || 0;
@@ -214,7 +318,9 @@ export class Character {
     }
     // 年龄衰退
     speed *= this.getAgeEfficiencyModifier();
-    return Math.max(0.4, speed);
+    // 岗位精力修正：种地岗位只获得剩余精力比例的速度
+    speed *= this.farmEnergyRatio;
+    return Math.max(0, speed);
   }
 
   /**
@@ -328,6 +434,9 @@ export class Character {
       daysWorked: this.daysWorked,
       // 旧兼容
       attributesRevealed: this.attributesRevealed,
+      // 岗位系统
+      posts: [...this.posts],
+      learnedGongfu: [...this.learnedGongfu],
     };
   }
 
@@ -348,6 +457,9 @@ export class Character {
     char.revealedAttributes = data.revealedAttributes || {};
     char.daysWorked = data.daysWorked || 0;
     char.attributesRevealed = data.attributesRevealed;
+    // 岗位系统
+    char.posts = data.posts || [];
+    char.learnedGongfu = data.learnedGongfu || [];
     return char;
   }
 }

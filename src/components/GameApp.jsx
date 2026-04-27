@@ -6,12 +6,13 @@ import FarmPanel from './FarmPanel';
 import FarmLeaderPanel from './FarmLeaderPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
+import ResearchPanel from './ResearchPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen } from 'lucide-react';
 
 const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
@@ -145,6 +146,14 @@ export default function GameApp() {
   const showFarmSubTabs = farmRoles.length > 1;
   const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
 
+  // 侧边栏 tab 列表（司务堂只在解锁后显示）
+  const sideTabs = [
+    { id: 'farm', label: '农田', icon: Wheat },
+    { id: 'warehouse', label: '仓库', icon: Package },
+    ...(game.researchSystem?.unlocked ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
+    { id: 'character', label: '角色', icon: User },
+  ];
+
   const renderFarmContent = () => {
     // 农民 → 详细视图(带进度条)；农民队长 → 管理页面(紧凑方格)
     if (currentRoleTab === 'farmer_leader') {
@@ -160,11 +169,7 @@ export default function GameApp() {
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧导航 */}
         <div className="w-28 bg-stone-900 border-r border-stone-700/50 flex flex-col py-2 shrink-0">
-          {[
-            { id: 'farm', label: '农田', icon: Wheat },
-            { id: 'warehouse', label: '仓库', icon: Package },
-            { id: 'character', label: '角色', icon: User },
-          ].map(tab => {
+          {sideTabs.map(tab => {
             const Icon = tab.icon;
             return (
               <button
@@ -172,7 +177,7 @@ export default function GameApp() {
                 onClick={() => { sfxTab(); setActiveTab(tab.id); }}
                 className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500'
+                    ? (tab.id === 'research' ? 'bg-cyan-900/20 text-cyan-400 border-r-2 border-cyan-500' : 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500')
                     : 'text-stone-400 hover:bg-stone-800 hover:text-stone-200'
                 }`}
               >
@@ -256,6 +261,7 @@ export default function GameApp() {
           <div className="flex-1 overflow-y-auto p-5">
             {activeTab === 'farm' && renderFarmContent()}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
+            {activeTab === 'research' && <ResearchPanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
           </div>
 
