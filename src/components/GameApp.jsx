@@ -4,6 +4,7 @@ import { sfxForAction, sfxTab, sfxSave, sfxNotify, toggleBGM, isBGMPlaying, sfxC
 import TopBar from './TopBar';
 import FarmPanel from './FarmPanel';
 import FarmLeaderPanel from './FarmLeaderPanel';
+import RecruitPanel from './RecruitPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
@@ -12,7 +13,7 @@ import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin } from 'lucide-react';
 
 const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
@@ -149,6 +150,7 @@ export default function GameApp() {
   // 侧边栏 tab 列表（司务堂只在解锁后显示）
   const sideTabs = [
     { id: 'farm', label: '农田', icon: Wheat },
+    { id: 'village', label: '附近村庄', icon: MapPin },
     { id: 'warehouse', label: '仓库', icon: Package },
     ...(game.researchSystem?.unlocked ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
     { id: 'character', label: '角色', icon: User },
@@ -260,6 +262,7 @@ export default function GameApp() {
 
           <div className="flex-1 overflow-y-auto p-5">
             {activeTab === 'farm' && renderFarmContent()}
+            {activeTab === 'village' && <RecruitPanel game={game} onAction={handleAction} />}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'research' && <ResearchPanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
