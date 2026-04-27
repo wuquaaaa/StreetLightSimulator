@@ -37,9 +37,10 @@ export const SaveSystem = {
       },
       log: game.log.slice(-50),
       // 招募系统
-      recruitQueue: game.recruitQueue.map(t => ({ ...t })),
+      recruitTask: game.recruitTask ? { ...game.recruitTask } : null,
       recruitPool: game.recruitPool,
       recruitPoolRefreshTicks: game.recruitPoolRefreshTicks,
+      recruitCandidates: game.recruitCandidates || [],
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -93,7 +94,8 @@ export const SaveSystem = {
     }
 
     // 招募系统（兼容旧存档）
-    game.recruitQueue = data.recruitQueue || [];
+    game.recruitTask = data.recruitTask || null;
+    game.recruitCandidates = data.recruitCandidates || [];
     game.recruitPool = data.recruitPool ?? RECRUIT_POOL_MAX;
     game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? RECRUIT_POOL_REFRESH_TICKS;
 

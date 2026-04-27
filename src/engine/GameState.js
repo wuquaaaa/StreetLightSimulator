@@ -15,6 +15,7 @@ import { getRoleName } from '../data/roles';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
   RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS,
+  RECRUIT_CANDIDATE_COUNT,
 } from './constants';
 
 // 纯委托映射：action → { target, method }
@@ -60,10 +61,15 @@ export class GameState {
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
-    // 招募系统：队长去村庄招募
-    this.recruitQueue = [];        // 进行中的招募任务 [{ticksRemaining, totalTicks}]
-    this.recruitPool = RECRUIT_POOL_MAX; // 村庄剩余可招募人数
-    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS; // 招募池刷新倒计时（tick）
+    // 招募系统：去村庄招募
+    // recruitTask: null | { type: 'self'|'delegate', delegateId?: string, ticksRemaining, totalTicks, phase: 'traveling'|'waiting_choice' }
+    //   - self 亲自去：phase='traveling' 到达后切 'waiting_choice' 等玩家选人
+    //   - delegate 派人：phase='traveling' 到达后自动带回（随机）
+    // candidates: 亲自到达村庄后的候选人列表 [{name, age, farming, personality}]
+    this.recruitTask = null;
+    this.recruitPool = RECRUIT_POOL_MAX;
+    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
+    this.recruitCandidates = []; // 到达村庄后的候选列表
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -95,6 +101,24 @@ export class GameState {
 
   set foodPerPerson(val) {
     this.foodSystem.foodPerPerson = val;
+  }
+
+  // 招募状态查询
+  get isRecruiting() {
+    return this.recruitTask !== null;
+  }
+
+  get isPlayerAway() {
+    return this.recruitTask !== null && this.recruitTask.type === 'self';
+  }
+
+  // 获取正在招募中（外出）的 NPC id 列表
+  get recruitingNPCIds() {
+    const ids = new Set();
+    if (this.recruitTask && this.recruitTask.type === 'delegate') {
+      ids.add(this.recruitTask.delegateId);
+    }
+    return ids;
   }
 
   tick() {
@@ -165,8 +189,12 @@ export class GameState {
       }
     }
 
-    // NPC农民自动劳作
-    this.npcAI.tickAutoWork(this.characters, this.farm, this.warehouse, (msg) => this.addLog(msg));
+    // NPC农民自动劳作（排除正在招募中的 NPC）
+    const recruitingIds = this.recruitingNPCIds;
+    const availableNPCs = recruitingIds.size > 0
+      ? this.characters.filter(c => !recruitingIds.has(c.id))
+      : this.characters;
+    this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
     // 招募队列处理
     this._tickRecruit();
@@ -183,10 +211,15 @@ export class GameState {
   doAction(action, params = {}) {
     let result;
 
-    // 纯委托：农田操作（12 个）
+    // 纯委托：农田操作（需要检查玩家是否在场）
     const farmFn = FARM_DELEGATES[action];
     if (farmFn) {
-      result = farmFn(this, params);
+      // 玩家亲自招募期间，禁止手动农田操作
+      if (this.isPlayerAway) {
+        result = { success: false, message: '你正在去村庄的路上，无法操作农田' };
+      } else {
+        result = farmFn(this, params);
+      }
       if (result && result.message) this.addLog(result.message);
       return result;
     }
@@ -202,7 +235,11 @@ export class GameState {
     // 带副作用的操作（6 个）
     switch (action) {
       case 'harvest':
-        result = this.farm.harvest(params.plotId, this.player, this.warehouse);
+        if (this.isPlayerAway) {
+          result = { success: false, message: '你正在去村庄的路上，无法收获' };
+        } else {
+          result = this.farm.harvest(params.plotId, this.player, this.warehouse);
+        }
         if (result.success && result.yield) {
           this.player.changeMood(3);
           result.overflowWarnings?.forEach(msg => this.addLog(msg));
@@ -229,13 +266,13 @@ export class GameState {
         result = { success: true, message: '拒绝了招工请求' };
         break;
       case 'leader_recruit': {
-        // 异步招募：检查食物+招募池+队列
-        if (this.recruitQueue.length >= 2) {
-          result = { success: false, message: '已有招募任务进行中，无法同时招募更多人' };
+        // 亲自去村庄招募
+        if (this.recruitTask) {
+          result = { success: false, message: '已有招募任务进行中' };
           break;
         }
         if (this.recruitPool <= 0) {
-          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了，等待一段时间再说吧' };
+          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了' };
           break;
         }
         const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
@@ -243,11 +280,92 @@ export class GameState {
           result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
           break;
         }
-        // 扣除食物、扣除招募池、加入队列
         this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+        this.recruitTask = {
+          type: 'self',
+          ticksRemaining: RECRUIT_TICKS,
+          totalTicks: RECRUIT_TICKS,
+          phase: 'traveling',
+        };
+        this.recruitCandidates = [];
+        result = { success: true, message: `你带上 ${RECRUIT_FOOD_COST} 单位小麦出发去村庄招募...大约 ${RECRUIT_TICKS / TICKS_PER_DAY} 天后到达` };
+        break;
+      }
+      case 'delegate_recruit': {
+        // 派 NPC 去村庄招募（随机带回）
+        const { characterId } = params;
+        if (!characterId) {
+          result = { success: false, message: '未指定派出的角色' };
+          break;
+        }
+        if (this.recruitTask) {
+          result = { success: false, message: '已有招募任务进行中' };
+          break;
+        }
+        if (this.recruitPool <= 0) {
+          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了' };
+          break;
+        }
+        const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
+        if (foodAmount < RECRUIT_FOOD_COST) {
+          result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
+          break;
+        }
+        // 检查 NPC 是否在开垦
+        if (this.farm.expandQueue.find(q => q.characterId === characterId)) {
+          result = { success: false, message: '该角色正在开垦，无法派出' };
+          break;
+        }
+        const delegate = this.characters.find(c => c.id === characterId);
+        if (!delegate) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+        this.recruitTask = {
+          type: 'delegate',
+          delegateId: characterId,
+          ticksRemaining: RECRUIT_TICKS,
+          totalTicks: RECRUIT_TICKS,
+          phase: 'traveling',
+        };
+        this.recruitCandidates = [];
+        result = { success: true, message: `${delegate.name}出发去村庄招募了...消耗了 ${RECRUIT_FOOD_COST} 单位小麦` };
+        break;
+      }
+      case 'recruit_choose': {
+        // 亲自招募到达村庄后选择候选人
+        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
+          result = { success: false, message: '当前不在选择阶段' };
+          break;
+        }
+        const { candidateIndex } = params;
+        if (candidateIndex == null || candidateIndex < 0 || candidateIndex >= this.recruitCandidates.length) {
+          result = { success: false, message: '无效的选择' };
+          break;
+        }
+        const chosen = this.recruitCandidates[candidateIndex];
+        // 创建 NPC
+        const npc = new Character({ name: chosen.name, roles: ['farmer'], isPlayer: false });
+        npc.knowledgeAttributes.farming = chosen.farming;
+        npc.age = chosen.age;
+        this.characters.push(npc);
+        this.population++;
         this.recruitPool--;
-        this.recruitQueue.push({ ticksRemaining: RECRUIT_TICKS, totalTicks: RECRUIT_TICKS });
-        result = { success: true, message: `你出发去附近的村庄招募...消耗了 ${RECRUIT_FOOD_COST} 单位小麦，大约 ${RECRUIT_TICKS / TICKS_PER_DAY} 天后带回新人` };
+        this.recruitTask = null;
+        this.recruitCandidates = [];
+        result = { success: true, message: `${chosen.name}（${chosen.age}岁）加入了你的队伍！耕种能力 ${chosen.farming}` };
+        break;
+      }
+      case 'recruit_skip': {
+        // 亲自招募到达村庄后放弃选择（返回，不消耗招募池）
+        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
+          result = { success: false, message: '当前不在选择阶段' };
+          break;
+        }
+        this.recruitTask = null;
+        this.recruitCandidates = [];
+        result = { success: true, message: '你没有找到合适的人选，打道回府。' };
         break;
       }
       case 'set_player_roles':
@@ -306,7 +424,30 @@ export class GameState {
   }
 
   /**
-   * 每tick处理招募队列
+   * 生成候选人列表（亲自招募到达村庄后调用）
+   */
+  _generateCandidates() {
+    const candidates = [];
+    const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
+    const available = NPC_NAMES.filter(n => !existing.has(n));
+
+    const personalities = ['老实', '勤劳', '随和', '内向', '开朗', '沉稳'];
+
+    for (let i = 0; i < RECRUIT_CANDIDATE_COUNT && available.length > 0; i++) {
+      const nameIdx = Math.floor(Math.random() * available.length);
+      const name = available.splice(nameIdx, 1)[0];
+      candidates.push({
+        name,
+        age: 18 + Math.floor(Math.random() * 35), // 18-52 岁
+        farming: 1 + Math.floor(Math.random() * 8), // 1-8
+        personality: personalities[Math.floor(Math.random() * personalities.length)],
+      });
+    }
+    return candidates;
+  }
+
+  /**
+   * 每tick处理招募任务
    */
   _tickRecruit() {
     // 招募池自动刷新
@@ -319,17 +460,26 @@ export class GameState {
       }
     }
 
-    // 处理进行中的招募
-    this.recruitQueue = this.recruitQueue.filter(task => {
-      task.ticksRemaining--;
-      if (task.ticksRemaining <= 0) {
-        // 招募完成，创建NPC
+    // 没有招募任务则跳过
+    if (!this.recruitTask) return;
+
+    this.recruitTask.ticksRemaining--;
+
+    if (this.recruitTask.ticksRemaining <= 0) {
+      if (this.recruitTask.type === 'self') {
+        // 亲自招募到达村庄：生成候选人，等玩家选择
+        this.recruitTask.phase = 'waiting_choice';
+        this.recruitCandidates = this._generateCandidates();
+        this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
+      } else {
+        // 派人招募到达：自动带回（随机）
         const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
-        this.addLog(`${name}加入了你的队伍！`);
-        return false;
+        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+        this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
+        this.recruitPool--;
+        this.recruitTask = null;
       }
-      return true;
-    });
+    }
   }
 
   /**

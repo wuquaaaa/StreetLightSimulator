@@ -94,10 +94,11 @@ export const NPC_SPIRIT_AURA_THRESHOLD = 40;
 
 // ====== 招募系统 ======
 // 农民队长去附近村庄招募普通农民
-export const RECRUIT_TICKS = 30;              // 招募耗时：3天 = 30 tick
+export const RECRUIT_TICKS = 30;              // 招募耗时：3天 = 30 tick（亲自/派人相同）
 export const RECRUIT_FOOD_COST = 10;          // 每次招募消耗食物（路费+饭钱）
 export const RECRUIT_POOL_MAX = 3;            // 村庄可招募上限（招完需等待刷新）
 export const RECRUIT_POOL_REFRESH_TICKS = 100;// 招募池刷新：10天 = 100 tick
+export const RECRUIT_CANDIDATE_COUNT = 3;     // 亲自招募时展示的候选人数
 
 // ====== 灵田升级系统 ======
 // 灵田类型

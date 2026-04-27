@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Minus, UserPlus, Trash2, MapPin, Clock, Users, Wheat } from 'lucide-react';
+import { Plus, Minus, UserPlus, Trash2, MapPin, Clock, Users, Wheat, ChevronRight, X } from 'lucide-react';
 import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
 import { FARM_EXPAND_TICKS, RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS, TICKS_PER_DAY } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
@@ -230,13 +230,16 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
 // ========== 子面板：人员管理 ==========
 function PersonnelTab({ game }) {
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
+  const recruitingIds = game.recruitingNPCIds;
+
   const assignedFarmerCount = new Set(game.farm.plots.flatMap(p =>
     Array.isArray(p.assignedTo) ? p.assignedTo : (p.assignedTo ? [p.assignedTo] : [])
   )).size;
   const idleFarmers = farmers.filter(f => {
     const hasPlots = game.farm.getPlotsForCharacter(f.id).length > 0;
     const isExpanding = game.farm.expandQueue.find(q => q.characterId === f.id);
-    return !hasPlots && !isExpanding;
+    const isRecruiting = recruitingIds.has(f.id);
+    return !hasPlots && !isExpanding && !isRecruiting;
   }).length;
 
   return (
@@ -258,9 +261,10 @@ function PersonnelTab({ game }) {
           const moodInfo = getMoodInfo(farmer.mood);
           const assignedPlots = game.farm.getPlotsForCharacter(farmer.id);
           const isExpanding = game.farm.expandQueue.find(q => q.characterId === farmer.id);
+          const isRecruiting = recruitingIds.has(farmer.id);
           const speed = farmer.getDisplaySpeed();
           return (
-            <div key={farmer.id} className="p-2 rounded-lg bg-stone-900/30 border border-stone-700/30">
+            <div key={farmer.id} className={`p-2 rounded-lg bg-stone-900/30 border ${isRecruiting ? 'border-amber-700/50 bg-amber-900/10' : 'border-stone-700/30'}`}>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-stone-200">{farmer.name}</span>
                 <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
@@ -268,7 +272,9 @@ function PersonnelTab({ game }) {
               <div className="flex items-center gap-3 mt-1 text-[10px] text-stone-500">
                 <span>耕种 {Math.floor(farmer.knowledgeAttributes.farming)}</span>
                 <span>速率 {speed.toFixed(1)}</span>
-                {isExpanding ? (
+                {isRecruiting ? (
+                  <span className="text-amber-400">🚶 招募中</span>
+                ) : isExpanding ? (
                   <span className="text-blue-400">⛏ 开垦中</span>
                 ) : assignedPlots.length > 0 ? (
                   <span className="text-green-400">管理 {assignedPlots.length} 田</span>
@@ -291,28 +297,43 @@ function PersonnelTab({ game }) {
 
 // ========== 子面板：附近村庄（招募） ==========
 function VillageTab({ game, onAction }) {
-  const recruitQueue = game.recruitQueue || [];
+  const recruitTask = game.recruitTask;
   const recruitPool = game.recruitPool ?? 0;
   const poolRefreshTicks = game.recruitPoolRefreshTicks ?? 0;
   const poolRefreshDays = Math.ceil(poolRefreshTicks / TICKS_PER_DAY);
-  const hasActiveRecruit = recruitQueue.length > 0;
-  const canRecruit = !hasActiveRecruit && recruitPool > 0;
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
+  const recruitingIds = game.recruitingNPCIds;
 
-  // 当前仓库食物量
+  // 可派出的 NPC（空闲 + 不在招募中 + 不在开垦中）
+  const availableDelegates = farmers.filter(f => {
+    const hasPlots = game.farm.getPlotsForCharacter(f.id).length > 0;
+    const isExpanding = game.farm.expandQueue.find(q => q.characterId === f.id);
+    const isRecruiting = recruitingIds.has(f.id);
+    return !hasPlots && !isExpanding && !isRecruiting;
+  });
+
   const foodAmount = game.warehouse.getItemAmount('food', 'wheat');
   const canAfford = foodAmount >= RECRUIT_FOOD_COST;
+  const canStartRecruit = !recruitTask && recruitPool > 0 && canAfford;
 
-  const handleRecruit = () => {
+  const [selectedDelegate, setSelectedDelegate] = useState(null);
+
+  const handleSelfRecruit = () => {
     if (onAction) onAction('leader_recruit');
   };
+
+  const handleDelegateRecruit = () => {
+    if (selectedDelegate && onAction) onAction('delegate_recruit', { characterId: selectedDelegate.id });
+  };
+
+  // 进行中的任务
+  const isTraveling = recruitTask && recruitTask.phase === 'traveling';
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
       <div className="flex items-center gap-2 mb-4">
         <MapPin size={14} className="text-amber-400" />
         <h3 className="text-sm font-bold text-stone-300">附近村庄</h3>
-        <span className="text-xs text-stone-500">（队长亲自招募）</span>
       </div>
 
       {/* 村庄状态 */}
@@ -331,73 +352,188 @@ function VillageTab({ game, onAction }) {
         )}
       </div>
 
-      {/* 招募队列（进行中） */}
-      {recruitQueue.length > 0 && (
+      {/* 招募进行中 */}
+      {isTraveling && (
         <div className="mb-4">
-          <div className="text-xs text-stone-500 mb-2">正在招募中...</div>
-          {recruitQueue.map((task, i) => {
-            const pct = Math.floor(((task.totalTicks - task.ticksRemaining) / task.totalTicks) * 100);
-            const remainDays = Math.ceil(task.ticksRemaining / TICKS_PER_DAY);
-            return (
-              <div key={i} className="p-3 bg-amber-900/20 rounded-lg border border-amber-800/30 mb-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-amber-300 flex items-center gap-1">
-                    <Clock size={12} /> 出发去村庄...
-                  </span>
-                  <span className="text-xs text-amber-400 font-bold">{pct}%</span>
-                </div>
-                {/* 进度条 */}
-                <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="text-[10px] text-stone-500 mt-1">
-                  大约还需 {remainDays} 天带回新人
+          {recruitTask.type === 'self' ? (
+            <RecruitProgressCard
+              label="你正前往村庄..."
+              sublabel="出发招募期间，无法亲自操作农田"
+              task={recruitTask}
+            />
+          ) : (
+            <RecruitProgressCard
+              label={`${game.characters.find(c => c.id === recruitTask.delegateId)?.name || '某人'}正前往村庄...`}
+              sublabel="派人招募，带回随机村民"
+              task={recruitTask}
+            />
+          )}
+        </div>
+      )}
+
+      {/* 亲自招募 vs 派人招募 选择 */}
+      {!recruitTask && (
+        <div className="space-y-3">
+          {/* 选项1：亲自去 */}
+          <div className={`p-3 rounded-lg border transition-colors
+            ${canStartRecruit ? 'bg-stone-900/30 border-stone-700/30' : 'bg-stone-900/20 border-stone-800/30 opacity-60'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-amber-300 font-medium">亲自去村庄</span>
+              <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">推荐</span>
+            </div>
+            <div className="text-xs text-stone-400 mb-3">
+              亲自前往可以看到候选人的信息（姓名、年龄、耕种能力），自己选择。但出发期间无法操作农田。
+            </div>
+            <div className="flex items-center justify-between mb-2 text-xs">
+              <span className="text-stone-500">花费：</span>
+              <span className={canAfford ? 'text-green-400' : 'text-red-400'}>
+                <Wheat size={10} className="inline mr-1" />{foodAmount} / {RECRUIT_FOOD_COST}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mb-3 text-xs">
+              <span className="text-stone-500">耗时：</span>
+              <span className="text-stone-300">{RECRUIT_TICKS / TICKS_PER_DAY} 天</span>
+            </div>
+            <button
+              onClick={handleSelfRecruit}
+              disabled={!canStartRecruit}
+              className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors
+                ${canStartRecruit
+                  ? 'bg-amber-700 hover:bg-amber-600 text-amber-100'
+                  : 'bg-stone-700 text-stone-500 cursor-not-allowed'
+                }`}
+            >
+              <UserPlus size={16} />
+              {recruitPool <= 0 ? '村庄暂无可招募人员' : canAfford ? '出发招募' : '粮食不足'}
+            </button>
+          </div>
+
+          {/* 选项2：派人去 */}
+          <div className={`p-3 rounded-lg border transition-colors
+            ${canStartRecruit ? 'bg-stone-900/30 border-stone-700/30' : 'bg-stone-900/20 border-stone-800/30 opacity-60'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-stone-300 font-medium">派人去村庄</span>
+              <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">随机</span>
+            </div>
+            <div className="text-xs text-stone-400 mb-3">
+              派出一名空闲农民去招募，会随机带回一个人。你无法挑选，但自己可以继续照看农田。
+            </div>
+
+            {/* 选择派出的 NPC */}
+            {availableDelegates.length > 0 ? (
+              <div className="mb-3">
+                <div className="text-xs text-stone-500 mb-1">选择派出的人：</div>
+                <div className="flex flex-wrap gap-1">
+                  {availableDelegates.map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setSelectedDelegate(selectedDelegate?.id === f.id ? null : f)}
+                      className={`px-2 py-1 rounded text-xs transition-colors
+                        ${selectedDelegate?.id === f.id
+                          ? 'bg-amber-700/60 text-amber-200 border border-amber-600/50'
+                          : 'bg-stone-700/50 text-stone-400 border border-stone-700/30 hover:text-stone-300'
+                        }`}
+                    >
+                      {f.name}
+                    </button>
+                  ))}
                 </div>
               </div>
-            );
-          })}
+            ) : (
+              <div className="text-xs text-stone-600 mb-3">没有可派出的空闲农民</div>
+            )}
+
+            <button
+              onClick={handleDelegateRecruit}
+              disabled={!canStartRecruit || !selectedDelegate}
+              className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors
+                ${canStartRecruit && selectedDelegate
+                  ? 'bg-stone-600 hover:bg-stone-500 text-stone-200'
+                  : 'bg-stone-700 text-stone-500 cursor-not-allowed'
+                }`}
+            >
+              {selectedDelegate ? `派 ${selectedDelegate.name} 去招募` : '请先选择派出的人'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* 招募按钮 */}
-      {!hasActiveRecruit && (
-        <div className="p-3 bg-stone-900/30 rounded-lg border border-stone-700/30">
-          <div className="text-xs text-stone-400 mb-3">
-            作为队长，你需要亲自出发去附近的村庄寻找愿意跟随的农民。
-          </div>
-          <div className="flex items-center justify-between mb-3 text-xs">
-            <span className="text-stone-500">所需物资：</span>
-            <span className={canAfford ? 'text-green-400' : 'text-red-400'}>
-              <Wheat size={10} className="inline mr-1" />
-              {foodAmount} / {RECRUIT_FOOD_COST}
-            </span>
-          </div>
-          <div className="flex items-center justify-between mb-3 text-xs">
-            <span className="text-stone-500">预计耗时：</span>
-            <span className="text-stone-300">{RECRUIT_TICKS / TICKS_PER_DAY} 天</span>
-          </div>
-          <button
-            onClick={handleRecruit}
-            disabled={!canRecruit}
-            className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors
-              ${canRecruit
-                ? 'bg-amber-700 hover:bg-amber-600 text-amber-100'
-                : 'bg-stone-700 text-stone-500 cursor-not-allowed'
-              }`}
-          >
-            <UserPlus size={16} />
-            {recruitPool <= 0 ? '村庄暂无可招募人员' : canAfford ? '出发招募' : '粮食不足'}
-          </button>
-        </div>
-      )}
-
-      {/* 已招募记录（当前农民数） */}
+      {/* 底部信息 */}
       <div className="mt-4 pt-3 border-t border-stone-700/30">
-        <div className="text-xs text-stone-500 mb-1">
+        <div className="text-xs text-stone-500">
           已有队员：<span className="text-stone-300 font-bold">{farmers.length}</span> 人
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 招募进度条卡片
+function RecruitProgressCard({ label, sublabel, task }) {
+  const pct = Math.floor(((task.totalTicks - task.ticksRemaining) / task.totalTicks) * 100);
+  const remainDays = Math.ceil(task.ticksRemaining / TICKS_PER_DAY);
+  return (
+    <div className="p-3 bg-amber-900/20 rounded-lg border border-amber-800/30">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-amber-300 flex items-center gap-1">
+          <Clock size={12} /> {label}
+        </span>
+        <span className="text-xs text-amber-400 font-bold">{pct}%</span>
+      </div>
+      <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-[10px] text-stone-500 mt-1 flex items-center justify-between">
+        <span>{sublabel}</span>
+        <span>大约还需 {remainDays} 天</span>
+      </div>
+    </div>
+  );
+}
+
+// ========== 候选人选择弹窗 ==========
+function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-amber-400">🏘 村民名单</h3>
+          <button onClick={onSkip} className="text-stone-500 hover:text-stone-300 text-sm">离开</button>
+        </div>
+        <p className="text-xs text-stone-400 mb-4">村长带你去见了这几位愿意跟随你的村民：</p>
+        <div className="space-y-2">
+          {candidates.map((c, i) => (
+            <div
+              key={i}
+              className="p-3 bg-stone-800/50 rounded-lg border border-stone-700/30 hover:border-amber-600/50 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-stone-200 font-medium">{c.name}</span>
+                <button
+                  onClick={() => onChoose(i)}
+                  className="px-3 py-1 bg-green-800/60 hover:bg-green-700/60 text-green-300 rounded text-xs transition-colors flex items-center gap-1"
+                >
+                  选择 <ChevronRight size={12} />
+                </button>
+              </div>
+              <div className="flex gap-3 text-xs text-stone-500">
+                <span>👤 {c.age}岁</span>
+                <span>🌾 耕种 {c.farming}</span>
+                <span>💬 {c.personality}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 text-center">
+          <button
+            onClick={onSkip}
+            className="text-xs text-stone-500 hover:text-stone-400 transition-colors"
+          >
+            没有合适的人选，返回
+          </button>
         </div>
       </div>
     </div>
@@ -424,12 +560,26 @@ export default function FarmLeaderPanel({ game, onAction }) {
     }
   }, []);
 
+  // 候选人选择弹窗
+  const showCandidatePopup = game.recruitTask?.phase === 'waiting_choice' && game.recruitCandidates?.length > 0;
+
+  const handleChoose = (index) => {
+    if (onAction) onAction('recruit_choose', { candidateIndex: index });
+  };
+
+  const handleSkip = () => {
+    if (onAction) onAction('recruit_skip');
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xl">👨‍🌾</span>
         <h2 className="text-lg font-bold text-amber-400">农田管理</h2>
         <span className="text-xs text-stone-500">（农民队长视角）</span>
+        {game.isPlayerAway && (
+          <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">🚶 外出中</span>
+        )}
       </div>
 
       {/* Tab 导航 */}
@@ -463,6 +613,15 @@ export default function FarmLeaderPanel({ game, onAction }) {
       )}
       {activeTab === 'village' && (
         <VillageTab game={game} onAction={onAction} />
+      )}
+
+      {/* 候选人选择弹窗 */}
+      {showCandidatePopup && (
+        <CandidateChoicePopup
+          candidates={game.recruitCandidates}
+          onChoose={handleChoose}
+          onSkip={handleSkip}
+        />
       )}
     </div>
   );
