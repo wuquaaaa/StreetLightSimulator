@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { MapPin, Clock, UserPlus, Wheat, ChevronRight, ArrowUpCircle } from 'lucide-react';
+import { Clock, UserPlus, Wheat, ChevronRight, ArrowUpCircle } from 'lucide-react';
 import { RECRUIT_FOOD_COST, TICKS_PER_DAY } from '../engine/constants';
 import { getVehicleInfo, getNextVehicle } from '../data/transport';
-import { getHRLevel, getHRLevelProgress } from '../data/hr-levels';
+import { getHRLevel, getHRLevelProgress, getRecruitVisibility, getAvailablePreferences, RECRUIT_PREFERENCES } from '../data/hr-levels';
 
 // 招募进度条卡片
 function RecruitProgressCard({ label, sublabel, task }) {
@@ -30,7 +30,7 @@ function RecruitProgressCard({ label, sublabel, task }) {
   );
 }
 
-// 候选人选择弹窗
+// 候选人选择弹窗（亲自招募用）
 function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHire, visibility }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -106,19 +106,86 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHir
   );
 }
 
+// NPC出发前询问招募偏好的弹窗
+function PreferencePopup({ npcName, npcHrLevel, onConfirm, onCancel }) {
+  const [selectedPref, setSelectedPref] = useState('any');
+  const hrLevel = getHRLevel(npcHrLevel || 0);
+  const availablePrefs = getAvailablePreferences(hrLevel.level);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-lg">🗣</span>
+          <h3 className="text-sm font-bold text-amber-400">{npcName}的请示</h3>
+          <span className="text-[10px] px-1.5 py-0.5 bg-cyan-900/30 rounded text-cyan-400">
+            {hrLevel.icon} 知客{hrLevel.name}
+          </span>
+        </div>
+        <p className="text-xs text-stone-400 mb-4">
+          {npcName}向你行礼："老板，我准备出发了。以我{hrLevel.icon}{hrLevel.name}的眼力，
+          {hrLevel.level === 1
+            ? '只能分辨男女老少，您有什么吩咐？'
+            : hrLevel.level === 2
+              ? '能看出身来历，您有什么吩咐？'
+              : '能看出各人特质潜力，您有什么吩咐？'
+          }"
+        </p>
+        <div className="space-y-1.5 mb-4">
+          {availablePrefs.map(pref => (
+            <button
+              key={pref.id}
+              onClick={() => setSelectedPref(pref.id)}
+              className={`w-full p-2 rounded-lg text-left text-xs transition-colors flex items-center gap-2 ${
+                selectedPref === pref.id
+                  ? 'bg-amber-900/30 border border-amber-700/50 text-amber-200'
+                  : 'bg-stone-800/50 border border-stone-700/30 text-stone-400 hover:bg-stone-800 hover:text-stone-300'
+              }`}
+            >
+              <span className={`text-base ${selectedPref === pref.id ? 'text-amber-400' : 'text-stone-500'}`}>
+                {selectedPref === pref.id ? '●' : '○'}
+              </span>
+              <div>
+                <span className="font-medium">{pref.label}</span>
+                <span className="text-stone-500 ml-1">— {pref.desc}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 rounded-lg text-xs bg-stone-700 text-stone-300 hover:bg-stone-600 transition-colors"
+          >
+            先不去了
+          </button>
+          <button
+            onClick={() => onConfirm(selectedPref)}
+            className="flex-1 py-2 rounded-lg text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 font-medium transition-colors"
+          >
+            出发！
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ========== 附近村庄面板（顶级） ==========
 export default function RecruitPanel({ game, onAction }) {
   const recruitTask = game.recruitTask;
-  const candidatePool = game.recruitCandidatePool || [];
-  const hiredCount = game.recruitHiredCount || 0;
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
   const recruitingIds = game.recruitingNPCIds;
   const vehicle = getVehicleInfo(game.currentVehicle);
   const nextVehicle = getNextVehicle(game.currentVehicle);
   const maxHire = vehicle.passengerCapacity;
-  const hrLevel = game.currentHRLevel;
-  const hrProgress = getHRLevelProgress(Math.max(...farmers.map(f => f.hrExp || 0), 0));
-  const visibility = game.recruitVisibility;
+
+  // 亲自招募的可见性 = 全队最高知客等级
+  let maxHrExp = 0;
+  for (const npc of farmers) { if ((npc.hrExp || 0) > maxHrExp) maxHrExp = npc.hrExp; }
+  const bestHrLevel = getHRLevel(maxHrExp);
+  const bestHrProgress = getHRLevelProgress(maxHrExp);
+  const selfVisibility = getRecruitVisibility(bestHrLevel.level);
 
   // 可派出的 NPC（空闲 + 不在招募中 + 不在开垦中）
   const availableDelegates = farmers.filter(f => {
@@ -133,13 +200,27 @@ export default function RecruitPanel({ game, onAction }) {
   const canStartRecruit = !recruitTask && canAfford;
 
   const [selectedDelegate, setSelectedDelegate] = useState(null);
+  const [showPrefPopup, setShowPrefPopup] = useState(false);
 
   const handleSelfRecruit = () => {
     if (onAction) onAction('leader_recruit');
   };
 
-  const handleDelegateRecruit = () => {
-    if (selectedDelegate && onAction) onAction('delegate_recruit', { characterId: selectedDelegate.id });
+  const handleDelegateClick = () => {
+    if (selectedDelegate && canStartRecruit) {
+      setShowPrefPopup(true);
+    }
+  };
+
+  const handlePrefConfirm = (preference) => {
+    setShowPrefPopup(false);
+    if (onAction && selectedDelegate) {
+      onAction('delegate_recruit', { characterId: selectedDelegate.id, preference });
+    }
+  };
+
+  const handlePrefCancel = () => {
+    setShowPrefPopup(false);
   };
 
   const handleUpgradeVehicle = () => {
@@ -155,7 +236,7 @@ export default function RecruitPanel({ game, onAction }) {
     cost => game.warehouse.getItemAmount(cost.category, cost.itemId) >= cost.amount
   );
 
-  // 候选人选择弹窗
+  // 候选人选择弹窗（亲自招募）
   const showCandidatePopup = game.recruitTask?.phase === 'waiting_choice' && game.recruitCandidatePool?.length > 0;
 
   const handleChoose = (index) => {
@@ -165,6 +246,9 @@ export default function RecruitPanel({ game, onAction }) {
   const handleSkip = () => {
     if (onAction) onAction('recruit_skip');
   };
+
+  // 当前派出NPC的知客信息
+  const selectedDelegateHr = selectedDelegate ? getHRLevel(selectedDelegate.hrExp || 0) : null;
 
   return (
     <div>
@@ -177,7 +261,7 @@ export default function RecruitPanel({ game, onAction }) {
         )}
       </div>
 
-      {/* 载具信息 */}
+      {/* 载具信息（不含知客等级） */}
       <div className="p-3 bg-stone-800/50 rounded-lg border border-stone-700/30 mb-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-stone-400">{vehicle.icon} {vehicle.name}</span>
@@ -186,19 +270,6 @@ export default function RecruitPanel({ game, onAction }) {
         <div className="text-xs text-stone-500 mt-1">
           {vehicle.description}
         </div>
-
-        {/* 知客等级 */}
-        <div className="flex items-center justify-between mt-2 text-xs">
-          <span className="text-stone-400">
-            知客等级 <span className="text-cyan-400">{hrLevel.icon} {hrLevel.name}</span>
-          </span>
-          <span className="text-stone-500">{hrLevel.description}</span>
-        </div>
-        {hrLevel.level < 3 && (
-          <div className="mt-1 w-full h-1.5 bg-stone-700 rounded-full overflow-hidden">
-            <div className="h-full bg-cyan-600 rounded-full transition-all" style={{ width: `${hrProgress * 100}%` }} />
-          </div>
-        )}
 
         {/* 升级载具按钮 */}
         {nextVehicle && (
@@ -241,7 +312,7 @@ export default function RecruitPanel({ game, onAction }) {
           ) : (
             <RecruitProgressCard
               label={`${game.characters.find(c => c.id === recruitTask.delegateId)?.name || '某人'}正前往村庄...`}
-              sublabel="派人招募，带回随机村民"
+              sublabel={`派人招募，${recruitTask.preference === 'any' ? '随机带回' : `按要求挑选${RECRUIT_PREFERENCES.find(p => p.id === recruitTask.preference)?.label || ''}`}`}
               task={recruitTask}
             />
           )}
@@ -267,10 +338,17 @@ export default function RecruitPanel({ game, onAction }) {
                 <Wheat size={10} className="inline mr-1" />{foodAmount} / {RECRUIT_FOOD_COST}
               </span>
             </div>
-            <div className="flex items-center justify-between mb-3 text-xs">
+            <div className="flex items-center justify-between mb-2 text-xs">
               <span className="text-stone-500">耗时：</span>
               <span className="text-stone-300">去1天 + 回1天</span>
             </div>
+            {/* 队伍最佳知客等级提示 */}
+            {farmers.length > 0 && (
+              <div className="flex items-center justify-between mb-3 text-xs">
+                <span className="text-stone-500">你的眼力：</span>
+                <span className="text-cyan-400">{bestHrLevel.icon} 知客{bestHrLevel.name}</span>
+              </div>
+            )}
             <button
               onClick={handleSelfRecruit}
               disabled={!canStartRecruit}
@@ -290,10 +368,10 @@ export default function RecruitPanel({ game, onAction }) {
             ${canStartRecruit ? 'bg-stone-900/30 border-stone-700/30' : 'bg-stone-900/20 border-stone-800/30 opacity-60'}`}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-stone-300 font-medium">派人去村庄</span>
-              <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">随机</span>
+              <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">派NPC</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              派人赶{vehicle.icon}{vehicle.name}去村庄随机带回一人，你无法挑选，但可以继续照看农田。一趟最多招 {maxHire} 人。
+              派人赶{vehicle.icon}{vehicle.name}去村庄带回村民。派出前他会根据眼力询问你的要求。一趟最多招 {maxHire} 人。
             </div>
 
             {/* 选择派出的 NPC */}
@@ -301,27 +379,48 @@ export default function RecruitPanel({ game, onAction }) {
               <div className="mb-3">
                 <div className="text-xs text-stone-500 mb-1">选择派出的人：</div>
                 <div className="flex flex-wrap gap-1">
-                  {availableDelegates.map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setSelectedDelegate(selectedDelegate?.id === f.id ? null : f)}
-                      className={`px-2 py-1 rounded text-xs transition-colors
-                        ${selectedDelegate?.id === f.id
-                          ? 'bg-amber-700/60 text-amber-200 border border-amber-600/50'
-                          : 'bg-stone-700/50 text-stone-400 border border-stone-700/30 hover:text-stone-300'
+                  {availableDelegates.map(f => {
+                    const hr = getHRLevel(f.hrExp || 0);
+                    const isSelected = selectedDelegate?.id === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setSelectedDelegate(isSelected ? null : f)}
+                        className={`px-2 py-1 rounded text-xs transition-colors ${
+                          isSelected
+                            ? 'bg-amber-700/60 text-amber-200 border border-amber-600/50'
+                            : 'bg-stone-700/50 text-stone-400 border border-stone-700/30 hover:text-stone-300'
                         }`}
-                    >
-                      {f.name}
-                    </button>
-                  ))}
+                      >
+                        {f.name} <span className="text-cyan-500">{hr.icon}{hr.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {/* 选中 NPC 后显示其知客等级详情 */}
+                {selectedDelegateHr && (
+                  <div className="mt-2 p-2 bg-stone-900/50 rounded border border-stone-700/20">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-stone-500">
+                        {selectedDelegate.name}的知客等级：
+                      </span>
+                      <span className="text-cyan-400">{selectedDelegateHr.icon} {selectedDelegateHr.name}</span>
+                    </div>
+                    <div className="text-[10px] text-stone-500 mt-1">{selectedDelegateHr.description}</div>
+                    {selectedDelegateHr.level < 3 && (
+                      <div className="mt-1 w-full h-1 bg-stone-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-cyan-600 rounded-full transition-all" style={{ width: `${getHRLevelProgress(selectedDelegate.hrExp || 0) * 100}%` }} />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-xs text-stone-600 mb-3">没有可派出的空闲农民</div>
             )}
 
             <button
-              onClick={handleDelegateRecruit}
+              onClick={handleDelegateClick}
               disabled={!canStartRecruit || !selectedDelegate}
               className={`w-full py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors
                 ${canStartRecruit && selectedDelegate
@@ -342,7 +441,7 @@ export default function RecruitPanel({ game, onAction }) {
         </div>
       </div>
 
-      {/* 候选人选择弹窗 */}
+      {/* 候选人选择弹窗（亲自招募） */}
       {showCandidatePopup && (
         <CandidateChoicePopup
           candidates={game.recruitCandidatePool}
@@ -350,7 +449,17 @@ export default function RecruitPanel({ game, onAction }) {
           onSkip={handleSkip}
           hiredCount={game.recruitHiredCount || 0}
           maxHire={game.maxRecruitHire}
-          visibility={game.recruitVisibility}
+          visibility={selfVisibility}
+        />
+      )}
+
+      {/* 偏好选择弹窗（派人招募） */}
+      {showPrefPopup && selectedDelegate && (
+        <PreferencePopup
+          npcName={selectedDelegate.name}
+          npcHrLevel={selectedDelegate.hrExp || 0}
+          onConfirm={handlePrefConfirm}
+          onCancel={handlePrefCancel}
         />
       )}
     </div>

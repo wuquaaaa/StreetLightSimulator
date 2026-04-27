@@ -23,7 +23,7 @@ import {
   RECRUIT_RETURN_TICKS, HR_EXP_PER_TICK,
 } from './constants';
 import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
-import { getHRLevel, getRecruitVisibility } from '../data/hr-levels';
+import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
 
 // 纯委托映射：action → { target, method }
 // 15 个不需要 GameState 介入的 case，统一处理 result.message 日志
@@ -344,8 +344,8 @@ export class GameState {
         break;
       }
       case 'delegate_recruit': {
-        // 派 NPC 去村庄招募（随机带回）
-        const { characterId } = params;
+        // 派 NPC 去村庄招募
+        const { characterId, preference } = params;
         if (!characterId) {
           result = { success: false, message: '未指定派出的角色' };
           break;
@@ -373,15 +373,19 @@ export class GameState {
         }
         this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
         const vehicle = getVehicleInfo(this.currentVehicle);
+        const delegateHrLevel = getHRLevel(delegate.hrExp || 0).level;
         this.recruitTask = {
           type: 'delegate',
           delegateId: characterId,
+          delegateHrLevel,
+          preference: preference || 'any',
           ticksRemaining: RECRUIT_TICKS_DELEGATE,
           totalTicks: RECRUIT_TICKS_DELEGATE,
           phase: 'traveling',
           vehicleId: this.currentVehicle,
         };
-        result = { success: true, message: `${delegate.name}赶着${vehicle.icon}${vehicle.name}出发去村庄招募了...约2天后带回` };
+        const prefLabel = preference === 'any' ? '' : `，按你的要求尽量挑${RECRUIT_PREFERENCES.find(p => p.id === preference)?.label || ''}`;
+        result = { success: true, message: `${delegate.name}赶着${vehicle.icon}${vehicle.name}出发去村庄招募了...约2天后带回${prefLabel}` };
         break;
       }
       case 'recruit_choose': {
@@ -666,11 +670,12 @@ export class GameState {
         this.recruitTask = null;
       }
     } else {
-      // 派人去：到达 → 自动带回
+      // 派人去：到达 → 根据偏好自动选人带回
       const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
       if (this.recruitCandidatePool.length > 0) {
-        const randIdx = Math.floor(Math.random() * this.recruitCandidatePool.length);
-        const chosen = this.recruitCandidatePool.splice(randIdx, 1)[0];
+        const preference = this.recruitTask.preference || 'any';
+        const bestIdx = pickBestByPreference(this.recruitCandidatePool, preference);
+        const chosen = this.recruitCandidatePool.splice(Math.max(0, bestIdx), 1)[0];
         const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
         this.recruitHiredCount++;
         const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
