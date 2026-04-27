@@ -69,3 +69,25 @@ export const WINTER_FREEZE_CHANCE = 0.1;
 
 // 缺水枯萎
 export const DRY_WITHER_CHANCE = 0.02;
+
+// ====== 灵草系统 ======
+export const SPIRIT_AURA_INITIAL_MIN = 30;    // 地块初始灵气最小值
+export const SPIRIT_AURA_INITIAL_RANGE = 40;  // 地块初始灵气随机范围
+export const SPIRIT_AURA_REGEN_RATE = 0.2;    // 每 tick 灵气自然恢复（空地更快）
+export const SPIRIT_AURA_REGEN_IDLE = 0.5;    // 空置地块灵气恢复（每 tick）
+export const SPIRIT_AURA_MAX = 100;
+export const SPIRIT_AURA_MIN = 0;
+// 灵气不足时草药停止生长的阈值
+export const SPIRIT_AURA_LOW_THRESHOLD = 20;
+
+// 灵蛊（草药专属病害，比普通虫害难处理）
+export const SPIRIT_BUG_SPAWN_CHANCE = 0.005;      // 每 tick 出现概率（略低于普通虫害）
+export const SPIRIT_BUG_INITIAL_SEVERITY_MIN = 4;
+export const SPIRIT_BUG_INITIAL_SEVERITY_RANGE = 4;
+export const SPIRIT_BUG_YIELD_PENALTY = 0.08;      // 灵蛊出现立即减产（比普通虫害重）
+export const SPIRIT_BUG_TICK_RATE = 0.004;         // 灵蛊每 tick 持续减产
+
+// 草药品质判定加成（基于灵气值的品质权重乘数）
+export const HERB_QUALITY_AURA_BONUS = 0.8;   // 灵气每+10点，品质权重整体上移系数
+// NPC 灵气补充阈值（低于此值时 NPC 会优先补充灵气）
+export const NPC_SPIRIT_AURA_THRESHOLD = 40;

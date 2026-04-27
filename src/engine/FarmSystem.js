@@ -2,17 +2,15 @@
  * 农田系统 - 路灯计划
  *
  * 核心机制：
- * - 小麦10天（100 tick）长成
- * - 肥力基准60：<60每天减产（0肥减更多），>60每天增产（60→100加速增产）
- * - 水分<60：每天永久降低本次作物产量
- * - 杂草>40：每天永久降低本次作物产量
- * - 杂草生长值0-100，满100后保持100，点击除草减20（与浇水相同逻辑）
- * - 病虫害出现立即减产5%，之后每天持续减产
- * - 以上永久减产针对本次作物，重新播种后刷新
- * - 收获后根据产量随机获得1-2颗种子
+ * - 食物作物：水分/肥力/杂草/虫害 → 影响产量修正
+ * - 灵草作物：在食物规则基础上，额外有灵气值消耗
+ *   · 灵气不足时停止生长
+ *   · 收获时根据灵气均值 + 病害状态计算品质
+ *   · 灵蛊（专属病害）比普通虫害更难处理
+ * - 特殊作物属性（growthTimeMod、waterCostMod、waterRequirement 等）
  */
 
-import { CROPS } from '../data/crops';
+import { CROPS, HERB_QUALITY } from '../data/crops';
 import {
   TICKS_PER_DAY,
   FERTILITY_BASE, FERTILITY_INITIAL_MIN, FERTILITY_INITIAL_RANGE, FERTILITY_DRAIN_RATE,
@@ -26,9 +24,14 @@ import {
   FARM_MAX_CROP_YIELD_MOD, FARM_MIN_CROP_YIELD_MOD,
   PEST_SPAWN_CHANCE, PEST_SPREAD_BASE, PEST_INITIAL_SEVERITY_MIN,
   PEST_INITIAL_SEVERITY_RANGE, PEST_SPREAD_SEVERITY_RANGE,
-  PEST_SPREAD_MIN_SEVERITY,   PEST_YIELD_PENALTY_SCALE,
+  PEST_SPREAD_MIN_SEVERITY, PEST_YIELD_PENALTY_SCALE,
   FARM_EXPAND_TICKS, FARM_INITIAL_PLOT_COUNT,
   DRY_WITHER_CHANCE,
+  SPIRIT_AURA_INITIAL_MIN, SPIRIT_AURA_INITIAL_RANGE,
+  SPIRIT_AURA_REGEN_RATE, SPIRIT_AURA_REGEN_IDLE,
+  SPIRIT_AURA_MAX, SPIRIT_AURA_MIN, SPIRIT_AURA_LOW_THRESHOLD,
+  SPIRIT_BUG_SPAWN_CHANCE, SPIRIT_BUG_INITIAL_SEVERITY_MIN,
+  SPIRIT_BUG_INITIAL_SEVERITY_RANGE, SPIRIT_BUG_YIELD_PENALTY, SPIRIT_BUG_TICK_RATE,
 } from './constants';
 
 export const FIELD_STATE = {
@@ -50,6 +53,65 @@ export const FIELD_DISPLAY = {
   [FIELD_STATE.WITHERED]: { text: '已枯萎', color: 'text-red-500', bg: 'bg-red-900/60', border: 'border-red-700/50', label: '枯' },
 };
 
+// ======================================================
+// 品质计算工具函数
+// ======================================================
+
+/**
+ * 根据灵气均值、灵蛊状态、产量修正 计算灵草品质
+ * @param {object} crop  - 作物定义（含 qualityWeights）
+ * @param {number} spiritAuraAvg - 种植期间平均灵气（0-100）
+ * @param {boolean} hadSpiritBug - 是否曾出现过灵蛊
+ * @param {number} yieldMod     - 当前产量修正（0.1-2.0）
+ * @returns {string} 品质 id（poor/low/medium/high/supreme）
+ */
+function rollHerbQuality(crop, spiritAuraAvg, hadSpiritBug, yieldMod) {
+  const base = { ...crop.qualityWeights };
+
+  // 灵气加成：灵气每超过50点，高品质权重提升
+  const auraMod = Math.max(0, (spiritAuraAvg - 50) / 50); // 0~1
+  base.supreme  = Math.round(base.supreme  * (1 + auraMod * 3));
+  base.high     = Math.round(base.high     * (1 + auraMod * 2));
+  base.medium   = Math.round(base.medium   * (1 + auraMod * 1));
+
+  // 灵气不足惩罚
+  if (spiritAuraAvg < 30) {
+    base.poor   = Math.round(base.poor * 2.5);
+    base.low    = Math.round(base.low  * 1.5);
+    base.medium = Math.round(base.medium * 0.5);
+    base.high   = Math.round(base.high   * 0.2);
+    base.supreme = 0;
+  }
+
+  // 灵蛊惩罚：直接质量下移
+  if (hadSpiritBug) {
+    base.poor   = Math.round(base.poor   * 3);
+    base.low    = Math.round(base.low    * 1.5);
+    base.high   = Math.round(base.high   * 0.3);
+    base.supreme = 0;
+  }
+
+  // 产量修正 < 0.5 → 残次概率大幅提升
+  if (yieldMod < 0.5) {
+    base.poor = Math.round(base.poor * 2);
+    base.supreme = 0;
+  }
+
+  const total = Object.values(base).reduce((s, v) => s + v, 0);
+  if (total <= 0) return 'poor';
+
+  let roll = Math.random() * total;
+  for (const [quality, weight] of Object.entries(base)) {
+    roll -= weight;
+    if (roll <= 0) return quality;
+  }
+  return 'low';
+}
+
+// ======================================================
+// FarmPlot
+// ======================================================
+
 export class FarmPlot {
   constructor(id, index) {
     this.id = id;
@@ -65,13 +127,28 @@ export class FarmPlot {
 
     // 病虫害：severity 就是剩余点击次数
     this.hasPest = false;
-    this.pestSeverity = 0;      // 需要点击的次数（也是进度条值）
+    this.pestSeverity = 0;
 
     // 杂草：生长值 0-100，满后保持100
     this.weedGrowth = 0;
 
     // 分配给哪些角色管理（角色id数组，支持多人）
     this.assignedTo = [];
+
+    // ===== 灵草系统 =====
+    // 地块灵气值（0-100），影响灵草品质和生长
+    this.spiritAura = SPIRIT_AURA_INITIAL_MIN + Math.floor(Math.random() * SPIRIT_AURA_INITIAL_RANGE);
+
+    // 本次作物种植期间的灵气累积均值（用于收获时品质计算）
+    this._spiritAuraAccum = 0;
+    this._spiritAuraTickCount = 0;
+
+    // 是否曾出现过灵蛊（影响最终品质）
+    this.hadSpiritBug = false;
+
+    // 灵蛊（灵草专属病害）
+    this.hasSpiritBug = false;
+    this.spiritBugSeverity = 0;
   }
 
   getCropDef() {
@@ -88,12 +165,27 @@ export class FarmPlot {
   }
 
   getYieldModifier() {
-    // 产量只由 cropYieldMod 决定（肥力通过每日修正间接影响 cropYieldMod）
     return this.cropYieldMod;
   }
 
   getYieldPercent() {
     return Math.round((this.getYieldModifier() - 1) * 100);
+  }
+
+  // 是否为灵草地块（有灵草在种）
+  isHerbPlot() {
+    const crop = this.getCropDef();
+    return !!(crop && crop.isHerb);
+  }
+
+  // 计算本次灵草品质
+  calculateHerbQuality() {
+    const crop = this.getCropDef();
+    if (!crop || !crop.isHerb) return null;
+    const avgAura = this._spiritAuraTickCount > 0
+      ? this._spiritAuraAccum / this._spiritAuraTickCount
+      : this.spiritAura;
+    return rollHerbQuality(crop, avgAura, this.hadSpiritBug, this.cropYieldMod);
   }
 
   // 序列化
@@ -104,6 +196,13 @@ export class FarmPlot {
       fertility: this.fertility, cropYieldMod: this.cropYieldMod,
       hasPest: this.hasPest, pestSeverity: this.pestSeverity,
       weedGrowth: this.weedGrowth, assignedTo: this.assignedTo,
+      // 灵草字段
+      spiritAura: this.spiritAura,
+      _spiritAuraAccum: this._spiritAuraAccum,
+      _spiritAuraTickCount: this._spiritAuraTickCount,
+      hadSpiritBug: this.hadSpiritBug,
+      hasSpiritBug: this.hasSpiritBug,
+      spiritBugSeverity: this.spiritBugSeverity,
     };
   }
 
@@ -114,9 +213,22 @@ export class FarmPlot {
     if (!Array.isArray(plot.assignedTo)) {
       plot.assignedTo = plot.assignedTo ? [plot.assignedTo] : [];
     }
+    // 兼容旧存档：灵草字段默认值
+    if (plot.spiritAura === undefined) {
+      plot.spiritAura = SPIRIT_AURA_INITIAL_MIN + Math.floor(Math.random() * SPIRIT_AURA_INITIAL_RANGE);
+    }
+    if (plot.hadSpiritBug === undefined)    plot.hadSpiritBug = false;
+    if (plot.hasSpiritBug === undefined)    plot.hasSpiritBug = false;
+    if (plot.spiritBugSeverity === undefined) plot.spiritBugSeverity = 0;
+    if (plot._spiritAuraAccum === undefined) plot._spiritAuraAccum = 0;
+    if (plot._spiritAuraTickCount === undefined) plot._spiritAuraTickCount = 0;
     return plot;
   }
 }
+
+// ======================================================
+// FarmSystem
+// ======================================================
 
 export class FarmSystem {
   constructor() {
@@ -124,7 +236,7 @@ export class FarmSystem {
       new FarmPlot('plot_1', 1),
       new FarmPlot('plot_2', 2),
     ];
-    this.targetPlotCount = 2; // 目标农田数
+    this.targetPlotCount = 2;
     // 开垦队列：{ characterId, ticksRemaining }
     this.expandQueue = [];
   }
@@ -132,7 +244,6 @@ export class FarmSystem {
   assignPlot(plotId, characterId) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    // 兼容：确保 assignedTo 是数组
     if (!Array.isArray(plot.assignedTo)) plot.assignedTo = plot.assignedTo ? [plot.assignedTo] : [];
     if (plot.assignedTo.includes(characterId)) return { success: false, message: '已分配过' };
     plot.assignedTo.push(characterId);
@@ -151,11 +262,10 @@ export class FarmSystem {
     return { success: true, message: '已取消分配' };
   }
 
-  // 获取某角色负责的农田
   getPlotsForCharacter(characterId) {
     return this.plots.filter(p => {
       if (Array.isArray(p.assignedTo)) return p.assignedTo.includes(characterId);
-      return p.assignedTo === characterId; // 兼容旧存档
+      return p.assignedTo === characterId;
     });
   }
 
@@ -180,7 +290,12 @@ export class FarmSystem {
     plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
-    plot.weedGrowth = 0; // 翻地清除杂草
+    plot.hasSpiritBug = false;
+    plot.spiritBugSeverity = 0;
+    plot.hadSpiritBug = false;
+    plot.weedGrowth = 0;
+    plot._spiritAuraAccum = 0;
+    plot._spiritAuraTickCount = 0;
     character.gainKnowledge('farming', 1);
     return { success: true, message: '翻地完成' };
   }
@@ -198,9 +313,12 @@ export class FarmSystem {
     plot.state = FIELD_STATE.PLANTED;
     plot.cropId = cropId;
     plot.growthProgress = 0;
-    plot.cropYieldMod = 1.0; // 播种重置
-    character.gainKnowledge('farming', 2);
-    return { success: true, message: `播种了${crop.name}` };
+    plot.cropYieldMod = 1.0;
+    plot.hadSpiritBug = false;
+    plot._spiritAuraAccum = 0;
+    plot._spiritAuraTickCount = 0;
+    character.gainKnowledge('farming', crop.isHerb ? 3 : 2);
+    return { success: true, message: `播种了${crop.name}${crop.isHerb ? '（灵草）' : ''}` };
   }
 
   water(plotId, character) {
@@ -233,7 +351,20 @@ export class FarmSystem {
     return { success: true, message: `除虫中...还需${plot.pestSeverity}次`, cleared: false };
   }
 
-  // 除草：单次点击减少20杂草生长值（与浇水同逻辑）
+  // 驱除灵蛊（灵草专属，比普通虫害消耗更多行动）
+  removeSpiritBug(plotId, character) {
+    const plot = this.plots.find(p => p.id === plotId);
+    if (!plot || !plot.hasSpiritBug) return { success: false, message: '没有灵蛊' };
+    plot.spiritBugSeverity--;
+    character.gainKnowledge('farming', 0.5);
+    if (plot.spiritBugSeverity <= 0) {
+      plot.hasSpiritBug = false;
+      plot.spiritBugSeverity = 0;
+      return { success: true, message: '灵蛊已驱除！', cleared: true };
+    }
+    return { success: true, message: `驱蛊中...还需${plot.spiritBugSeverity}次`, cleared: false };
+  }
+
   removeWeeds(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
@@ -257,7 +388,7 @@ export class FarmSystem {
     const bonusYield = isHighQuality ? Math.ceil(actualYield * 0.3) : 0;
     const totalYield = actualYield + bonusYield;
 
-    // 种子掉落：根据产量，保证种子数量可持续
+    // 种子掉落
     const baseYield = crop.baseYield || 5;
     const yieldRatio = totalYield / baseYield;
     let seedBack;
@@ -269,9 +400,15 @@ export class FarmSystem {
       seedBack = Math.random() < 0.3 ? 2 : 1;
     }
 
+    // 灵草品质计算
+    let herbQuality = null;
+    if (crop.isHerb) {
+      herbQuality = plot.calculateHerbQuality();
+    }
+
     const yieldPct = Math.round((yieldMod - 1) * 100);
 
-    // 重置
+    // 重置地块
     plot.state = FIELD_STATE.EMPTY;
     plot.cropId = null;
     plot.growthProgress = 0;
@@ -279,17 +416,25 @@ export class FarmSystem {
     plot.cropYieldMod = 1.0;
     plot.hasPest = false;
     plot.pestSeverity = 0;
+    plot.hasSpiritBug = false;
+    plot.spiritBugSeverity = 0;
+    plot.hadSpiritBug = false;
+    plot._spiritAuraAccum = 0;
+    plot._spiritAuraTickCount = 0;
     // 杂草和水分保留
 
-    character.gainKnowledge('farming', 3);
+    character.gainKnowledge('farming', crop.isHerb ? 5 : 3);
 
     let message = `收获了 ${totalYield} 单位${crop.name}`;
     if (yieldPct < -5) message += `（减产 ${Math.abs(yieldPct)}%）`;
-    if (yieldPct > 5) message += `（增产 ${yieldPct}%）`;
+    if (yieldPct > 5)  message += `（增产 ${yieldPct}%）`;
     if (bonusYield > 0) message += `（丰收！+${bonusYield}）`;
+    if (herbQuality) {
+      const qDef = HERB_QUALITY[herbQuality];
+      message += `【${qDef.label}】`;
+    }
     message += `，获得${seedBack}颗${crop.seedName}`;
 
-    // 入库（种子+产物），返回溢出警告
     const overflowWarnings = [];
     if (warehouse) {
       if (seedBack) {
@@ -298,7 +443,14 @@ export class FarmSystem {
           overflowWarnings.push(`仓库满了！${seedResult.overflow}颗${crop.seedName}丢失`);
         }
       }
-      const storeResult = warehouse.addItem(crop.category, crop.harvestItem, crop.name, totalYield);
+      // 灵草入库携带品质信息
+      const storeResult = warehouse.addItem(
+        crop.category,
+        crop.harvestItem,
+        crop.name,
+        totalYield,
+        herbQuality ? { quality: herbQuality } : undefined
+      );
       if (storeResult.overflow > 0) {
         overflowWarnings.push(`仓库满了！${storeResult.overflow}单位${crop.name}丢失`);
       }
@@ -306,6 +458,7 @@ export class FarmSystem {
 
     return {
       success: true, message, isHighQuality,
+      herbQuality,
       yield: { itemId: crop.harvestItem, category: crop.category, amount: totalYield, name: crop.name },
       seedBack: { itemId: crop.seedId, amount: seedBack, name: crop.seedName },
       overflowWarnings,
@@ -313,18 +466,34 @@ export class FarmSystem {
   }
 
   // ====== 每tick自动更新 ======
-  tick(isNewDay = false) {
+  tick(isNewDay = false, currentSeason = '春') {
     const events = [];
 
     for (let i = 0; i < this.plots.length; i++) {
       const plot = this.plots[i];
+      const crop = plot.getCropDef();
 
-      // --- 水分自然蒸发 ---
-      plot.waterLevel = Math.max(0, plot.waterLevel - WATER_EVAPORATION_RATE);
+      // --- 水分自然蒸发（玉米额外蒸发） ---
+      const waterCostMod = crop?.waterCostMod ?? 1;
+      plot.waterLevel = Math.max(0, plot.waterLevel - WATER_EVAPORATION_RATE * waterCostMod);
+
+      // --- 灵气自然恢复 ---
+      const auraRegen = (plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.PLOWED)
+        ? SPIRIT_AURA_REGEN_IDLE
+        : SPIRIT_AURA_REGEN_RATE;
+      plot.spiritAura = Math.min(SPIRIT_AURA_MAX, plot.spiritAura + auraRegen);
 
       // --- 有作物：肥力流失 ---
       if (plot.state === FIELD_STATE.PLANTED || plot.state === FIELD_STATE.GROWING) {
         plot.fertility = Math.max(FERTILITY_MIN_FOR_GROWTH, plot.fertility - FERTILITY_DRAIN_RATE);
+
+        // 灵草消耗灵气
+        if (crop?.isHerb && crop.spiritCost) {
+          plot.spiritAura = Math.max(SPIRIT_AURA_MIN, plot.spiritAura - crop.spiritCost);
+          // 记录灵气累积均值
+          plot._spiritAuraAccum += plot.spiritAura;
+          plot._spiritAuraTickCount++;
+        }
       }
 
       // 播种→生长
@@ -341,14 +510,38 @@ export class FarmSystem {
       }
 
       if (plot.state === FIELD_STATE.GROWING) {
-        const crop = plot.getCropDef();
         if (!crop) continue;
 
+        // 血莲：水分不足直接停止生长
+        if (crop.waterRequirement && plot.waterLevel < crop.waterRequirement) {
+          // 不推进 growthProgress，只记录减产
+          plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - 0.01);
+          continue;
+        }
+
+        // 天根草：肥力不足生长速率减半
+        const fertilityMod = (crop.fertilityRequirement && plot.fertility < crop.fertilityRequirement) ? 0.5 : 1;
+
+        // 灵气不足：灵草停止生长
+        const auraGrowthMod = (crop.isHerb && plot.spiritAura < SPIRIT_AURA_LOW_THRESHOLD) ? 0 : 1;
+
+        // 霜花冬天加速
+        const seasonMod = (crop.winterBonus && currentSeason === '冬') ? 1.4 : 1;
+
         // === 作物生长 ===
-        const waterGrowthMod = plot.waterLevel > WATER_CRITICAL_THRESHOLD ? 1 : (plot.waterLevel > WATER_VERY_LOW_THRESHOLD ? 0.5 : 0.1);
+        const waterGrowthMod = plot.waterLevel > WATER_CRITICAL_THRESHOLD ? 1
+          : (plot.waterLevel > WATER_VERY_LOW_THRESHOLD ? 0.5 : 0.1);
         const pestGrowthMod = plot.hasPest ? 0.5 : 1;
-        const weedGrowthMod = plot.weedGrowth > WEED_THRESHOLD ? (1 - (plot.weedGrowth - WEED_THRESHOLD) / 200) : 1; // max 0.7
-        const growthPerTick = 1 * waterGrowthMod * pestGrowthMod * weedGrowthMod;
+        const spiritBugMod  = plot.hasSpiritBug ? 0.4 : 1;
+        const weedGrowthMod = plot.weedGrowth > WEED_THRESHOLD
+          ? (1 - (plot.weedGrowth - WEED_THRESHOLD) / 200) : 1;
+
+        // growthTimeMod：越大生长越慢（玉米1.6，萝卜0.7）
+        const growthTimeMod = crop.growthTimeMod ?? 1;
+        const growthPerTick = (1 / growthTimeMod)
+          * waterGrowthMod * pestGrowthMod * spiritBugMod
+          * weedGrowthMod * auraGrowthMod * fertilityMod * seasonMod;
+
         plot.growthProgress = Math.min(100, plot.growthProgress + growthPerTick);
 
         if (plot.growthProgress >= 100) {
@@ -364,12 +557,16 @@ export class FarmSystem {
         }
         // 杂草>40
         if (plot.weedGrowth > WEED_THRESHOLD) {
-          const weedSeverity = (plot.weedGrowth - WEED_THRESHOLD) / 60; // 0~1
+          const weedSeverity = (plot.weedGrowth - WEED_THRESHOLD) / 60;
           plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - weedSeverity * YIELD_WEED_SEVERITY_RATE);
         }
-        // 病虫害持续减产（严重度越高减产越快）
+        // 病虫害持续减产
         if (plot.hasPest) {
           plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - YIELD_PEST_TICK_RATE * plot.pestSeverity);
+        }
+        // 灵蛊持续减产
+        if (plot.hasSpiritBug) {
+          plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - SPIRIT_BUG_TICK_RATE * plot.spiritBugSeverity);
         }
 
         // === 缺水枯萎 ===
@@ -379,12 +576,24 @@ export class FarmSystem {
           continue;
         }
 
-        // === 病虫害随机出现（立即减产5%）===
-        if (!plot.hasPest && Math.random() < PEST_SPAWN_CHANCE) {
-          plot.hasPest = true;
-          plot.pestSeverity = PEST_INITIAL_SEVERITY_MIN + Math.floor(Math.random() * PEST_INITIAL_SEVERITY_RANGE);
-          plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - YIELD_PEST_IMMEDIATE);
-          events.push({ type: 'pest', plotId: plot.id });
+        // === 普通虫害随机出现（食物/灵草都可能，但灵草优先触发灵蛊）===
+        if (crop.isHerb) {
+          // 灵草：灵蛊
+          if (!plot.hasSpiritBug && Math.random() < SPIRIT_BUG_SPAWN_CHANCE) {
+            plot.hasSpiritBug = true;
+            plot.hadSpiritBug = true;
+            plot.spiritBugSeverity = SPIRIT_BUG_INITIAL_SEVERITY_MIN + Math.floor(Math.random() * SPIRIT_BUG_INITIAL_SEVERITY_RANGE);
+            plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - SPIRIT_BUG_YIELD_PENALTY);
+            events.push({ type: 'spirit_bug', plotId: plot.id });
+          }
+        } else {
+          // 食物：普通虫害
+          if (!plot.hasPest && Math.random() < PEST_SPAWN_CHANCE) {
+            plot.hasPest = true;
+            plot.pestSeverity = PEST_INITIAL_SEVERITY_MIN + Math.floor(Math.random() * PEST_INITIAL_SEVERITY_RANGE);
+            plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - YIELD_PEST_IMMEDIATE);
+            events.push({ type: 'pest', plotId: plot.id });
+          }
         }
       }
 
@@ -393,13 +602,16 @@ export class FarmSystem {
         if (plot.hasPest) {
           plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - YIELD_READY_PEST_RATE * plot.pestSeverity);
         }
+        if (plot.hasSpiritBug) {
+          plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - SPIRIT_BUG_TICK_RATE * plot.spiritBugSeverity);
+        }
         if (plot.weedGrowth > WEED_THRESHOLD) {
           plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - YIELD_READY_WEED_RATE);
         }
       }
     }
 
-    // === 病虫害传染 ===
+    // === 病虫害传染（仅食物作物间）===
     for (let i = 0; i < this.plots.length; i++) {
       const plot = this.plots[i];
       if (!plot.hasPest || plot.pestSeverity < PEST_SPREAD_MIN_SEVERITY) continue;
@@ -422,13 +634,11 @@ export class FarmSystem {
       for (const plot of this.plots) {
         if (plot.state !== FIELD_STATE.GROWING && plot.state !== FIELD_STATE.READY) continue;
         if (plot.fertility > FERTILITY_BASE) {
-          // 肥力>基准：每天增产，增量随肥力加速
-          const ratio = (plot.fertility - FERTILITY_BASE) / 40; // 0~1
+          const ratio = (plot.fertility - FERTILITY_BASE) / 40;
           const dailyBonus = YIELD_FERTILITY_HIGH_BONUS * ratio * ratio;
           plot.cropYieldMod = Math.min(FARM_MAX_CROP_YIELD_MOD, plot.cropYieldMod + dailyBonus);
         } else if (plot.fertility < FERTILITY_BASE) {
-          // 肥力<基准：每天减产
-          const ratio = (FERTILITY_BASE - plot.fertility) / FERTILITY_BASE; // 0~1
+          const ratio = (FERTILITY_BASE - plot.fertility) / FERTILITY_BASE;
           const dailyPenalty = YIELD_FERTILITY_LOW_PENALTY * ratio;
           plot.cropYieldMod = Math.max(FARM_MIN_CROP_YIELD_MOD, plot.cropYieldMod - dailyPenalty);
         }
@@ -439,14 +649,17 @@ export class FarmSystem {
   }
 
   /**
-   * 冬天冻害：随机冻死正在生长的作物
-   * @param {number} freezeChance - 冻害概率
-   * @returns {number} 受损农田数量
+   * 冬天冻害：随机冻死正在生长的作物（灵草抗冻性更强）
    */
   applyWinterDamage(freezeChance) {
     let damaged = 0;
     for (const plot of this.plots) {
-      if (plot.state === FIELD_STATE.GROWING && Math.random() < freezeChance) {
+      if (plot.state !== FIELD_STATE.GROWING) continue;
+      const crop = plot.getCropDef();
+      // 霜花（冬季草药）免疫冻害
+      if (crop?.winterBonus) continue;
+      const actualChance = crop?.isHerb ? freezeChance * 0.5 : freezeChance;
+      if (Math.random() < actualChance) {
         plot.state = FIELD_STATE.WITHERED;
         damaged++;
       }
@@ -454,7 +667,6 @@ export class FarmSystem {
     return damaged;
   }
 
-  // 设置目标农田数（自动拆除多余空闲农田）
   setTargetPlots(count) {
     if (typeof count !== 'number' || count < 0) {
       return { success: false, message: '无效的目标数' };
@@ -500,9 +712,7 @@ export class FarmSystem {
     return { success: true, message: '成功开垦了一块新农田' };
   }
 
-  // 开始开垦任务（5天=50tick）
   startExpand(characterId) {
-    // 检查此角色是否已在开垦
     if (this.expandQueue.find(q => q.characterId === characterId)) {
       return { success: false, message: '该角色已在开垦' };
     }
@@ -510,7 +720,6 @@ export class FarmSystem {
     return { success: true, message: `开始开垦新农田（预计${FARM_EXPAND_TICKS / TICKS_PER_DAY}天）` };
   }
 
-  // 每tick推进开垦
   tickExpand() {
     const completed = [];
     this.expandQueue = this.expandQueue.filter(q => {
@@ -527,7 +736,6 @@ export class FarmSystem {
     return completed;
   }
 
-  // 序列化
   toJSON() {
     return {
       plots: this.plots.map(p => p.toJSON()),

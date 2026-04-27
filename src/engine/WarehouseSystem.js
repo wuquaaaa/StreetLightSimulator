@@ -6,11 +6,12 @@
 
 // 专用仓库分类（通过事件解锁，不按天数）
 export const WAREHOUSE_CATEGORIES = {
-  food: { name: '食物', icon: '🍞', color: '#f59e0b' },
-  mineral: { name: '矿物', icon: '⛏️', color: '#6b7280' },
+  food:     { name: '食物', icon: '🍞', color: '#f59e0b' },
+  herb:     { name: '药材', icon: '🌿', color: '#a855f7' },  // 灵草药材
+  mineral:  { name: '矿物', icon: '⛏️', color: '#6b7280' },
   material: { name: '材料', icon: '🪵', color: '#92400e' },
-  tool: { name: '工具', icon: '🔧', color: '#3b82f6' },
-  seed: { name: '种子', icon: '🌱', color: '#22c55e' },
+  tool:     { name: '工具', icon: '🔧', color: '#3b82f6' },
+  seed:     { name: '种子', icon: '🌱', color: '#22c55e' },
 };
 
 export class WarehouseSystem {
@@ -45,7 +46,8 @@ export class WarehouseSystem {
   }
 
   // ======== 添加物品（优先存专用仓库，未解锁则存公共仓库） ========
-  addItem(category, itemId, name, amount) {
+  // meta: 可选附加信息，如 { quality: 'medium' }（灵草品质等）
+  addItem(category, itemId, name, amount, meta = undefined) {
     const specialized = this.storage[category];
 
     // 如果专用仓库已解锁，优先存入专用仓库
@@ -57,8 +59,9 @@ export class WarehouseSystem {
       if (specAmount > 0) {
         if (specialized.items[itemId]) {
           specialized.items[itemId].amount += specAmount;
+          if (meta) specialized.items[itemId].meta = meta;
         } else {
-          specialized.items[itemId] = { name, amount: specAmount };
+          specialized.items[itemId] = { name, amount: specAmount, ...(meta ? { meta } : {}) };
         }
         amount -= specAmount;
       }
@@ -72,8 +75,9 @@ export class WarehouseSystem {
       if (commonAmount > 0) {
         if (this.common.items[itemId]) {
           this.common.items[itemId].amount += commonAmount;
+          if (meta) this.common.items[itemId].meta = meta;
         } else {
-          this.common.items[itemId] = { name, amount: commonAmount, category };
+          this.common.items[itemId] = { name, amount: commonAmount, category, ...(meta ? { meta } : {}) };
         }
         amount -= commonAmount;
       }

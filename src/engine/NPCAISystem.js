@@ -44,7 +44,13 @@ export class NPCAISystem {
    * 农民 AI：按优先级执行一个农田操作
    */
   _executeFarmerAction(npc, plots, farm, warehouse, logFn) {
-    // 优先级：除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
+    // 优先级：灵蛊 > 除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
+    for (const plot of plots) {
+      if (plot.hasSpiritBug) {
+        farm.removeSpiritBug(plot.id, npc);
+        return;
+      }
+    }
     for (const plot of plots) {
       if (plot.hasPest) {
         farm.removePest(plot.id, npc);

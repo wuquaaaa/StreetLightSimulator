@@ -23,8 +23,9 @@ const FARM_DELEGATES = {
   plant:         (g, p) => g.farm.plant(p.plotId, p.cropId, g.player, g.warehouse),
   water:         (g, p) => g.farm.water(p.plotId, g.player),
   remove_pest:   (g, p) => g.farm.removePest(p.plotId, g.player),
-  remove_weeds:  (g, p) => g.farm.removeWeeds(p.plotId, g.player),
-  fertilize:     (g, p) => g.farm.fertilize(p.plotId, g.player),
+  remove_weeds:      (g, p) => g.farm.removeWeeds(p.plotId, g.player),
+  fertilize:         (g, p) => g.farm.fertilize(p.plotId, g.player),
+  remove_spirit_bug: (g, p) => g.farm.removeSpiritBug(p.plotId, g.player),
   rename_plot:   (g, p) => g.farm.renamePlot(p.plotId, p.newName),
   expand_farm:   (g)    => g.farm.expandFarm(),
   remove_plot:   (g, p) => g.farm.removePlot(p.plotId),
@@ -118,9 +119,9 @@ export class GameState {
       }
     }
 
-    // 农田tick（传入是否新的一天）
+    // 农田tick（传入是否新的一天 + 当前季节）
     const isNewDay = this.tickCount % TICKS_PER_DAY === 0;
-    const farmEvents = this.farm.tick(isNewDay);
+    const farmEvents = this.farm.tick(isNewDay, this.season);
     for (const evt of farmEvents) {
       if (evt.type === 'ready') {
         this.addLog(`${evt.cropName}已成熟，可以收获了！`);
@@ -131,6 +132,9 @@ export class GameState {
         this.addLog('病虫害出现了！请及时除虫！');
       } else if (evt.type === 'pest_spread') {
         this.addLog(`病虫害传染到了邻田！`);
+      } else if (evt.type === 'spirit_bug') {
+        this.addLog('灵蛊入侵了灵草！需要及时驱蛊，否则品质大降！');
+        this.player.changeMood(-2);
       }
     }
 
