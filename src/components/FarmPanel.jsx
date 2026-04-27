@@ -8,7 +8,7 @@ import { CROPS, FOOD_CROPS, HERB_CROPS, HERB_QUALITY } from '../data/crops';
 // ======================================================
 // 灵田升级确认弹窗
 // ======================================================
-function UpgradeConfirmPopup({ plot, warehouse, onConfirm, onClose }) {
+function UpgradeConfirmPopup({ plot, warehouse, onConfirm, onClose, showAura }) {
   const targetLevel = plot.plotLevel + 1;
   if (targetLevel > SPIRIT_PLOT_MAX_LEVEL) return null;
 
@@ -41,11 +41,13 @@ function UpgradeConfirmPopup({ plot, warehouse, onConfirm, onClose }) {
         {/* 升级效果 */}
         <div className="bg-purple-950/40 border border-purple-800/30 rounded p-3 mb-3 text-xs space-y-1">
           <div className="text-purple-300 font-semibold mb-1">升级效果：</div>
+          {showAura && (
           <div className="flex justify-between text-stone-400">
             <span>灵气回复</span>
             <span className="text-purple-300">×{bonus.auraRegenMul}</span>
           </div>
-          {bonus.spiritCostReduction > 0 && (
+          )}
+          {showAura && bonus.spiritCostReduction > 0 && (
             <div className="flex justify-between text-stone-400">
               <span>灵气消耗减免</span>
               <span className="text-green-400">-{Math.round(bonus.spiritCostReduction * 100)}%</span>
@@ -99,7 +101,7 @@ function UpgradeConfirmPopup({ plot, warehouse, onConfirm, onClose }) {
 // ======================================================
 // 播种弹窗（分食物/灵草两栏）
 // ======================================================
-function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason }) {
+function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason, showAura }) {
   const [tab, setTab] = useState('food');
 
   const enrichCrops = (list) =>
@@ -159,7 +161,7 @@ function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason }) {
                   <div className="text-xs text-stone-500">{crop.description}</div>
                   {crop.isHerb && (
                     <div className="text-[10px] text-purple-400 mt-0.5">
-                      生长周期 {crop.growthTime}天 · 消耗灵气 {crop.spiritCost}/tick
+                      生长周期 {crop.growthTime}天{showAura ? ` · 消耗灵气 ${crop.spiritCost}/tick` : ' · 需要灵气滋养'}
                     </div>
                   )}
                 </div>
@@ -198,7 +200,7 @@ function LabeledBar({ label, value, max, color, suffix, warning }) {
 // ======================================================
 // 农田卡片
 // ======================================================
-function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
+function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, showAura }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
 
@@ -272,7 +274,7 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
           )}
           {plot.hasPest      && <Bug     size={11} className="text-red-400" title="虫害" />}
           {plot.hasSpiritBug && <Wind    size={11} className="text-purple-400" title="灵蛊" />}
-          {auraLow           && <Sparkles size={11} className="text-orange-400" title="灵气不足" />}
+          {showAura && auraLow && <Sparkles size={11} className="text-orange-400" title="灵气不足" />}
           <span className={`text-xs ${stateInfo.color}`}>{stateInfo.text}</span>
         </div>
       </div>
@@ -290,8 +292,8 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
       {/* 灵田等级效果预览（空地/翻地状态显示） */}
       {isSpirit && (isEmpty || isPlowed) && (
         <div className="text-[10px] text-purple-400/70 mb-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-          <span>灵气回复 ×{plot.getLevelBonus().auraRegenMul}</span>
-          {plot.getLevelBonus().spiritCostReduction > 0 && <span>灵耗-{Math.round(plot.getLevelBonus().spiritCostReduction * 100)}%</span>}
+          {showAura && <span>灵气回复 ×{plot.getLevelBonus().auraRegenMul}</span>}
+          {showAura && plot.getLevelBonus().spiritCostReduction > 0 && <span>灵耗-{Math.round(plot.getLevelBonus().spiritCostReduction * 100)}%</span>}
           <span>产量+{Math.round(plot.getLevelBonus().herbYieldBonus * 100)}%</span>
         </div>
       )}
@@ -309,8 +311,8 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
           suffix={isGrowing ? `${Math.floor(plot.growthProgress)}%` : isReady ? '100%' : '-'} />
         <LabeledBar label="杂草" value={plot.weedGrowth} max={100}
           color={plot.weedGrowth > 40 ? '#84cc16' : '#4d7c0f'} />
-        {/* 灵气进度条（灵田始终显示，普通田仅灵草/空地显示） */}
-        {(isSpirit || isHerb || isPlowed || isEmpty) && (
+        {/* 灵气进度条（研究灵植术后可见） */}
+        {showAura && (isSpirit || isHerb || isPlowed || isEmpty) && (
           <LabeledBar label="灵气" value={plot.spiritAura} max={100}
             color={plot.spiritAura < 20 ? '#f97316' : isSpirit ? '#c084fc' : '#a855f7'}
             warning={auraLow} />
@@ -325,8 +327,8 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
         </div>
       )}
 
-      {/* 灵气不足警告条 */}
-      {auraLow && isGrowing && (
+      {/* 灵气不足警告条（研究灵植术后可见） */}
+      {showAura && auraLow && isGrowing && (
         <div className="flex items-center gap-1.5 bg-orange-900/30 border border-orange-700/40 rounded px-2 py-1 mb-2">
           <Sparkles size={11} className="text-orange-400 shrink-0" />
           <span className="text-[10px] text-orange-300">灵气不足，灵草生长已停止！</span>
@@ -468,6 +470,9 @@ export default function FarmPanel({ game, onAction }) {
   const player     = game.player;
   const season     = game.season || '春';
 
+  // 灵气可见性：研究完成灵植术后才能看到灵气值
+  const showAura = game.researchSystem?.isGongfuResearched('lingshi') ?? false;
+
   // 统计灵田数量
   const spiritPlotCount = plots.filter(p => p.isSpiritPlot()).length;
 
@@ -493,7 +498,7 @@ export default function FarmPanel({ game, onAction }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {plots.map(plot => (
           <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant}
-            onUpgrade={setUpgradePlot} characters={characters} player={player} />
+            onUpgrade={setUpgradePlot} characters={characters} player={player} showAura={showAura} />
         ))}
       </div>
 
@@ -525,6 +530,7 @@ export default function FarmPanel({ game, onAction }) {
           onSelect={handleSeedSelect}
           onClose={() => setPlantingPlotId(null)}
           currentSeason={season}
+          showAura={showAura}
         />
       )}
 
@@ -534,6 +540,7 @@ export default function FarmPanel({ game, onAction }) {
           warehouse={game.warehouse}
           onConfirm={handleUpgradeConfirm}
           onClose={() => setUpgradePlot(null)}
+          showAura={showAura}
         />
       )}
     </div>
