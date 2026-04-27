@@ -4,7 +4,6 @@
  * 从 GameState 中提取，负责序列化/反序列化、存取档位管理。
  */
 
-import { RECRUIT_POOL_REFRESH_TICKS } from './constants';
 import { ResearchSystem } from './ResearchSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
@@ -41,7 +40,6 @@ export const SaveSystem = {
       recruitTask: game.recruitTask ? { ...game.recruitTask } : null,
       recruitCandidatePool: game.recruitCandidatePool || [],
       recruitHiredCount: game.recruitHiredCount || 0,
-      recruitPoolRefreshTicks: game.recruitPoolRefreshTicks || 0,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
     };
@@ -100,7 +98,6 @@ export const SaveSystem = {
     game.recruitTask = data.recruitTask || null;
     game.recruitCandidatePool = data.recruitCandidatePool || [];
     game.recruitHiredCount = data.recruitHiredCount || 0;
-    game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? 0;
 
     // 研究系统
     if (data.researchSystem) {

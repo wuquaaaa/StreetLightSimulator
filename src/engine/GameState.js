@@ -19,7 +19,7 @@ import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
-  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE, RECRUIT_MAX_HIRE, RECRUIT_POOL_REFRESH_TICKS,
+  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE, RECRUIT_MAX_HIRE,
 } from './constants';
 
 // 纯委托映射：action → { target, method }
@@ -73,12 +73,11 @@ export class GameState {
     // recruitTask: null | { type: 'self'|'delegate', delegateId?: string, ticksRemaining, totalTicks, phase: 'traveling'|'waiting_choice' }
     //   - self 亲自去：phase='traveling' 到达后切 'waiting_choice' 等玩家选人
     //   - delegate 派人：phase='traveling' 到达后自动带回（随机）
-    // recruitCandidatePool: 候选人池（最多10人），refreshTicks 到期后刷新
-    // recruitHiredCount: 本池已招走人数（最多3人后需等刷新）
+    // recruitCandidatePool: 候选人池（最多10人），每次出发刷新
+    // recruitHiredCount: 本趟已招走人数（驴车限载4人含赶车，最多招3人）
     this.recruitTask = null;
     this.recruitCandidatePool = [];  // [{name, gender, age, originTrait, generalTraits, fate, appearance}]
     this.recruitHiredCount = 0;
-    this.recruitPoolRefreshTicks = 0; // 0 = 初始时还没刷新，第一次招募会触发
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -303,14 +302,8 @@ export class GameState {
           result = { success: false, message: '已有招募任务进行中' };
           break;
         }
-        if (this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
-          result = { success: false, message: '本批招满了，等村庄来新人吧' };
-          break;
-        }
-        // 首次出发时生成候选人池
-        if (this.recruitCandidatePool.length === 0) {
-          this._refreshCandidatePool();
-        }
+        // 每次出发都刷新候选人池
+        this._refreshCandidatePool();
         const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
         if (foodAmount < RECRUIT_FOOD_COST) {
           result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
@@ -337,14 +330,8 @@ export class GameState {
           result = { success: false, message: '已有招募任务进行中' };
           break;
         }
-        if (this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
-          result = { success: false, message: '本批招满了，等村庄来新人吧' };
-          break;
-        }
-        // 首次派出时生成候选人池
-        if (this.recruitCandidatePool.length === 0) {
-          this._refreshCandidatePool();
-        }
+        // 每次派出都刷新候选人池
+        this._refreshCandidatePool();
         const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
         if (foodAmount < RECRUIT_FOOD_COST) {
           result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
@@ -390,15 +377,15 @@ export class GameState {
         const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
         this._tryUnlockResearch();
 
-        // 检查是否还能继续选（本批还没招满且池中还有人）
+        // 检查是否还能继续选（驴车还没坐满且池中还有人）
         if (this.recruitHiredCount < RECRUIT_MAX_HIRE && this.recruitCandidatePool.length > 0) {
           // 不关闭选择界面，继续让玩家选
-          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）加入了你的队伍！还可以再选 ${RECRUIT_MAX_HIRE - this.recruitHiredCount} 人。` };
+          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）坐上了驴车！还能再选 ${RECRUIT_MAX_HIRE - this.recruitHiredCount} 人。` };
         } else {
-          // 招满了或池子空了，返回
+          // 驴车坐满了或池子空了，返回
           this.recruitTask = null;
-          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `本批已招满 ${RECRUIT_MAX_HIRE} 人。`;
-          result = { success: true, message: `${chosen.name}加入了！${poolMsg}`, recruitDone: true };
+          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `驴车坐满了 ${RECRUIT_MAX_HIRE} 人，该回去了。`;
+          result = { success: true, message: `${chosen.name}坐上了驴车！${poolMsg}`, recruitDone: true };
         }
         break;
       }
@@ -579,24 +566,13 @@ export class GameState {
 
     this.recruitCandidatePool = pool;
     this.recruitHiredCount = 0;
-    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
-    this.addLog('附近的村庄来了一批新的村民，有10位愿意跟随你。');
+    this.addLog('你赶着驴车来到村庄，有10位村民愿意跟随你。驴车太小，一趟最多坐四个人。');
   }
 
   /**
    * 每tick处理招募任务
    */
   _tickRecruit() {
-    // 招募池自动刷新（当已招满或池子为空时倒计时刷新）
-    if (this.recruitCandidatePool.length === 0 || this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
-      if (this.recruitPoolRefreshTicks > 0) {
-        this.recruitPoolRefreshTicks--;
-        if (this.recruitPoolRefreshTicks <= 0) {
-          this._refreshCandidatePool();
-        }
-      }
-    }
-
     // 没有招募任务则跳过
     if (!this.recruitTask) return;
 

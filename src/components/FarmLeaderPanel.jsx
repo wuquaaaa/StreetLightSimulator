@@ -338,8 +338,6 @@ function VillageTab({ game, onAction }) {
   const recruitTask = game.recruitTask;
   const candidatePool = game.recruitCandidatePool || [];
   const hiredCount = game.recruitHiredCount || 0;
-  const poolRefreshTicks = game.recruitPoolRefreshTicks || 0;
-  const poolRefreshDays = Math.ceil(poolRefreshTicks / TICKS_PER_DAY);
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
   const recruitingIds = game.recruitingNPCIds;
 
@@ -353,8 +351,7 @@ function VillageTab({ game, onAction }) {
 
   const foodAmount = game.warehouse.getItemAmount('food', 'wheat');
   const canAfford = foodAmount >= RECRUIT_FOOD_COST;
-  const canHireMore = hiredCount < RECRUIT_MAX_HIRE;
-  const canStartRecruit = !recruitTask && canHireMore && canAfford;
+  const canStartRecruit = !recruitTask && canAfford;
 
   const [selectedDelegate, setSelectedDelegate] = useState(null);
 
@@ -376,18 +373,19 @@ function VillageTab({ game, onAction }) {
         <h3 className="text-sm font-bold text-stone-300">附近村庄</h3>
       </div>
 
-      {/* 村庄状态 */}
+      {/* 驴车说明 */}
       <div className="p-3 bg-stone-900/50 rounded-lg border border-stone-700/30 mb-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-stone-400">候选村民</span>
-          <span className={candidatePool.length > 0 && canHireMore ? 'text-green-400 font-bold' : 'text-stone-600'}>
-            {candidatePool.length} 人（已招 {hiredCount}/{RECRUIT_MAX_HIRE}）
-          </span>
+          <span className="text-stone-400">驴车载量</span>
+          <span className="text-amber-400 font-bold">{RECRUIT_MAX_HIRE} 人/趟</span>
         </div>
-        {(!canHireMore || candidatePool.length === 0) && poolRefreshTicks > 0 && (
+        <div className="text-xs text-stone-500 mt-1">
+          穷得只剩一头驴和一辆破驴车，一趟最多坐四个人（含赶车的你）。
+        </div>
+        {recruitTask && (
           <div className="text-xs text-stone-500 mt-1 flex items-center gap-1">
             <Clock size={10} />
-            {hiredCount >= RECRUIT_MAX_HIRE ? '本批已招满' : '候选已选完'}，约 {poolRefreshDays} 天后刷新
+            {isTraveling ? '驴车在路上...' : '已到达村庄，正在选人'}
           </div>
         )}
       </div>
@@ -422,7 +420,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">推荐</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              亲自前往可以从候选人中挑选，但出发期间无法操作农田。每次最多选 {RECRUIT_MAX_HIRE} 人。
+              亲自赶驴车前往村庄挑选村民，但出发期间无法操作农田。驴车一趟最多坐 {RECRUIT_MAX_HIRE} 人。
             </div>
             <div className="flex items-center justify-between mb-2 text-xs">
               <span className="text-stone-500">花费：</span>
@@ -444,7 +442,7 @@ function VillageTab({ game, onAction }) {
                 }`}
             >
               <UserPlus size={16} />
-              {!canHireMore ? '本批已招满' : canAfford ? '出发招募' : '粮食不足'}
+              {canAfford ? '赶驴车出发' : '粮食不足'}
             </button>
           </div>
 
@@ -456,7 +454,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">随机</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              派出一名空闲农民去招募，会随机带回一个人。你无法挑选，但自己可以继续照看农田。（本批最多 {RECRUIT_MAX_HIRE} 人）
+              派人赶驴车去村庄随机带回一人，你无法挑选，但可以继续照看农田。驴车一趟最多坐 {RECRUIT_MAX_HIRE} 人。
             </div>
 
             {/* 选择派出的 NPC */}

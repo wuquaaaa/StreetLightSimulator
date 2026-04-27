@@ -97,8 +97,8 @@ export const NPC_SPIRIT_AURA_THRESHOLD = 40;
 export const RECRUIT_TICKS = 30;              // 招募耗时：3天 = 30 tick（亲自/派人相同）
 export const RECRUIT_FOOD_COST = 10;          // 每次招募消耗食物（路费+饭钱）
 export const RECRUIT_POOL_SIZE = 10;          // 候选人池大小（十选三）
-export const RECRUIT_MAX_HIRE = 3;            // 每池最多招走3人
-export const RECRUIT_POOL_REFRESH_TICKS = 100;// 招募池刷新：10天 = 100 tick
+export const RECRUIT_MAX_HIRE = 3;            // 每趟驴车最多坐4人（含赶车），即最多招3人
+// 故事设定：穷得只剩一头驴和一辆破驴车，驴车只能坐下四个人（你+3人）
 
 // ====== 灵田升级系统 ======
 // 灵田类型
