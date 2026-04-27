@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Plus, Minus, UserPlus, Trash2, MapPin, Clock, Users, Wheat, ChevronRight, X } from 'lucide-react';
+import { Plus, Minus, UserPlus, Trash2, MapPin, Clock, Users, Wheat, ChevronRight, X, ArrowUpCircle } from 'lucide-react';
 import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
-import { FARM_EXPAND_TICKS, RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_MAX_HIRE, RECRUIT_POOL_SIZE, TICKS_PER_DAY } from '../engine/constants';
+import { FARM_EXPAND_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE, TICKS_PER_DAY } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
+import { getVehicleInfo, getNextVehicle } from '../data/transport';
+import { getHRLevel, getHRLevelProgress, getRecruitVisibility } from '../data/hr-levels';
 
 // 获取plot的分配角色名列表
 function getAssignedNames(plot, farmers) {
@@ -340,6 +342,12 @@ function VillageTab({ game, onAction }) {
   const hiredCount = game.recruitHiredCount || 0;
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
   const recruitingIds = game.recruitingNPCIds;
+  const vehicle = getVehicleInfo(game.currentVehicle);
+  const nextVehicle = getNextVehicle(game.currentVehicle);
+  const maxHire = vehicle.passengerCapacity;
+  const hrLevel = game.currentHRLevel;
+  const hrProgress = getHRLevelProgress(Math.max(...farmers.map(f => f.hrExp || 0), 0));
+  const visibility = game.recruitVisibility;
 
   // 可派出的 NPC（空闲 + 不在招募中 + 不在开垦中）
   const availableDelegates = farmers.filter(f => {
@@ -363,8 +371,18 @@ function VillageTab({ game, onAction }) {
     if (selectedDelegate && onAction) onAction('delegate_recruit', { characterId: selectedDelegate.id });
   };
 
+  const handleUpgradeVehicle = () => {
+    if (onAction) onAction('upgrade_vehicle');
+  };
+
   // 进行中的任务
   const isTraveling = recruitTask && recruitTask.phase === 'traveling';
+  const isReturning = recruitTask && recruitTask.phase === 'returning';
+
+  // 检查升级材料是否足够
+  const canUpgradeVehicle = nextVehicle && nextVehicle.upgradeCost.every(
+    cost => game.warehouse.getItemAmount(cost.category, cost.itemId) >= cost.amount
+  );
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
@@ -373,19 +391,54 @@ function VillageTab({ game, onAction }) {
         <h3 className="text-sm font-bold text-stone-300">附近村庄</h3>
       </div>
 
-      {/* 驴车说明 */}
+      {/* 载具信息 */}
       <div className="p-3 bg-stone-900/50 rounded-lg border border-stone-700/30 mb-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-stone-400">驴车载量</span>
-          <span className="text-amber-400 font-bold">{RECRUIT_MAX_HIRE} 人/趟</span>
+          <span className="text-stone-400">{vehicle.icon} {vehicle.name}</span>
+          <span className="text-amber-400 font-bold">载量 {maxHire} 人/趟</span>
         </div>
         <div className="text-xs text-stone-500 mt-1">
-          穷得只剩一头驴和一辆破驴车，一趟最多坐四个人（含赶车的你）。
+          {vehicle.description}
         </div>
+
+        {/* 知客等级 */}
+        <div className="flex items-center justify-between mt-2 text-xs">
+          <span className="text-stone-400">
+            知客等级 <span className="text-cyan-400">{hrLevel.icon} {hrLevel.name}</span>
+          </span>
+          <span className="text-stone-500">{hrLevel.description}</span>
+        </div>
+        {hrLevel.level < 5 && (
+          <div className="mt-1 w-full h-1.5 bg-stone-700 rounded-full overflow-hidden">
+            <div className="h-full bg-cyan-600 rounded-full transition-all" style={{ width: `${hrProgress * 100}%` }} />
+          </div>
+        )}
+
+        {/* 升级载具按钮 */}
+        {nextVehicle && (
+          <div className="mt-2 pt-2 border-t border-stone-700/30">
+            <button
+              onClick={handleUpgradeVehicle}
+              disabled={!canUpgradeVehicle || !!recruitTask}
+              className={`w-full py-1.5 rounded text-xs flex items-center justify-center gap-1 transition-colors ${
+                canUpgradeVehicle && !recruitTask
+                  ? 'bg-amber-800/40 hover:bg-amber-700/50 text-amber-300'
+                  : 'bg-stone-800/40 text-stone-600 cursor-not-allowed'
+              }`}
+            >
+              <ArrowUpCircle size={12} />
+              {canUpgradeVehicle
+                ? `升级为 ${nextVehicle.icon}${nextVehicle.name}（载量${nextVehicle.passengerCapacity}人）`
+                : `升级为${nextVehicle.icon}${nextVehicle.name}（材料不足）`
+              }
+            </button>
+          </div>
+        )}
+
         {recruitTask && (
           <div className="text-xs text-stone-500 mt-1 flex items-center gap-1">
             <Clock size={10} />
-            {isTraveling ? '驴车在路上...' : '已到达村庄，正在选人'}
+            {isTraveling ? `${vehicle.name}在路上...` : isReturning ? `赶着${vehicle.name}回程中...` : '已到达村庄，正在选人'}
           </div>
         )}
       </div>
@@ -420,7 +473,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">推荐</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              亲自赶驴车前往村庄挑选村民，但出发期间无法操作农田。驴车一趟最多坐 {RECRUIT_MAX_HIRE} 人。
+              亲自赶{vehicle.icon}{vehicle.name}前往村庄挑选村民，但出发期间无法操作农田。一趟最多招 {maxHire} 人。
             </div>
             <div className="flex items-center justify-between mb-2 text-xs">
               <span className="text-stone-500">花费：</span>
@@ -430,7 +483,7 @@ function VillageTab({ game, onAction }) {
             </div>
             <div className="flex items-center justify-between mb-3 text-xs">
               <span className="text-stone-500">耗时：</span>
-              <span className="text-stone-300">{RECRUIT_TICKS / TICKS_PER_DAY} 天</span>
+              <span className="text-stone-300">去1天 + 回1天</span>
             </div>
             <button
               onClick={handleSelfRecruit}
@@ -442,7 +495,7 @@ function VillageTab({ game, onAction }) {
                 }`}
             >
               <UserPlus size={16} />
-              {canAfford ? '赶驴车出发' : '粮食不足'}
+              {canAfford ? `赶${vehicle.name}出发` : '粮食不足'}
             </button>
           </div>
 
@@ -454,7 +507,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">随机</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              派人赶驴车去村庄随机带回一人，你无法挑选，但可以继续照看农田。驴车一趟最多坐 {RECRUIT_MAX_HIRE} 人。
+              派人赶{vehicle.icon}{vehicle.name}去村庄随机带回一人，你无法挑选，但可以继续照看农田。一趟最多招 {maxHire} 人。
             </div>
 
             {/* 选择派出的 NPC */}
@@ -533,7 +586,7 @@ function RecruitProgressCard({ label, sublabel, task }) {
 }
 
 // ========== 候选人选择弹窗 ==========
-function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHire }) {
+function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHire, visibility }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -573,11 +626,24 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHir
               {c.appearance && (
                 <div className="text-[10px] text-stone-600 italic mb-1">{c.appearance}</div>
               )}
-              {/* 只显示出身（表层），特质加入后才揭示 */}
-              {c.originTrait && (
+              {/* 知客等级2+：看出身 */}
+              {visibility.showOrigin && c.originTrait && (
                 <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
                   {c.originTrait.icon} {c.originTrait.name}
                 </span>
+              )}
+              {/* 知客等级3+：看通用特质 */}
+              {visibility.showTraits && c.generalTraits && c.generalTraits.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 mt-0.5">
+                  {c.generalTraits.map((t, ti) => (
+                    <span key={ti} className="text-[9px] px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">
+                      {t.icon} {t.name}
+                      {visibility.showTraitDesc && t.description && (
+                        <span className="text-stone-500 ml-1">({t.description})</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           ))}
@@ -677,7 +743,8 @@ export default function FarmLeaderPanel({ game, onAction }) {
           onChoose={handleChoose}
           onSkip={handleSkip}
           hiredCount={game.recruitHiredCount || 0}
-          maxHire={RECRUIT_MAX_HIRE}
+          maxHire={game.maxRecruitHire}
+          visibility={game.recruitVisibility}
         />
       )}
     </div>

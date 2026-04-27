@@ -10,6 +10,7 @@
 
 import {
   NPC_WATER_THRESHOLD, NPC_WEED_THRESHOLD, NPC_FERTILITY_THRESHOLD,
+  HR_EXP_PER_TICK,
 } from './constants';
 
 export class NPCAISystem {
@@ -36,6 +37,10 @@ export class NPCAISystem {
 
       for (let op = 0; op < totalOps; op++) {
         this._executeFarmerAction(npc, plots, farm, warehouse, logFn);
+      }
+      // 干活积累 HR（知客）经验
+      if (totalOps > 0) {
+        npc.gainHRExp(HR_EXP_PER_TICK * totalOps);
       }
     }
   }

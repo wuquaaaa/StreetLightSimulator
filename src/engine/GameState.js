@@ -19,8 +19,11 @@ import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
-  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE, RECRUIT_MAX_HIRE,
+  RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
+  RECRUIT_RETURN_TICKS, HR_EXP_PER_TICK,
 } from './constants';
+import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
+import { getHRLevel, getRecruitVisibility } from '../data/hr-levels';
 
 // 纯委托映射：action → { target, method }
 // 15 个不需要 GameState 介入的 case，统一处理 result.message 日志
@@ -70,14 +73,14 @@ export class GameState {
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
     // 招募系统：去村庄招募
-    // recruitTask: null | { type: 'self'|'delegate', delegateId?: string, ticksRemaining, totalTicks, phase: 'traveling'|'waiting_choice' }
-    //   - self 亲自去：phase='traveling' 到达后切 'waiting_choice' 等玩家选人
-    //   - delegate 派人：phase='traveling' 到达后自动带回（随机）
-    // recruitCandidatePool: 候选人池（最多10人），每次出发刷新
-    // recruitHiredCount: 本趟已招走人数（驴车限载4人含赶车，最多招3人）
+    // recruitTask: { type, delegateId?, ticksRemaining, totalTicks, phase, vehicleId }
+    //   - self: traveling(1天) → waiting_choice → returning(1天回程)
+    //   - delegate: traveling(2天往返) → 自动带回
+    // currentVehicle: 当前使用的交通工具 ID（驴车/马车/牛车）
     this.recruitTask = null;
-    this.recruitCandidatePool = [];  // [{name, gender, age, originTrait, generalTraits, fate, appearance}]
+    this.recruitCandidatePool = [];
     this.recruitHiredCount = 0;
+    this.currentVehicle = 'donkey_cart';
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -118,6 +121,25 @@ export class GameState {
 
   get isPlayerAway() {
     return this.recruitTask !== null && this.recruitTask.type === 'self';
+  }
+
+  // 获取当前招募载量上限
+  get maxRecruitHire() {
+    return getVehicleInfo(this.currentVehicle).passengerCapacity;
+  }
+
+  // 获取当前HR等级（取队伍中最高）
+  get currentHRLevel() {
+    let maxExp = 0;
+    for (const npc of this.characters) {
+      if (npc.hrExp > maxExp) maxExp = npc.hrExp;
+    }
+    return getHRLevel(maxExp);
+  }
+
+  // 获取招募时候选人信息可见性
+  get recruitVisibility() {
+    return getRecruitVisibility(this.currentHRLevel.level);
   }
 
   // 获取正在招募中（外出）的 NPC id 列表
@@ -310,13 +332,15 @@ export class GameState {
           break;
         }
         this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+        const vehicle = getVehicleInfo(this.currentVehicle);
         this.recruitTask = {
           type: 'self',
-          ticksRemaining: RECRUIT_TICKS,
-          totalTicks: RECRUIT_TICKS,
+          ticksRemaining: RECRUIT_TICKS_SELF,
+          totalTicks: RECRUIT_TICKS_SELF,
           phase: 'traveling',
+          vehicleId: this.currentVehicle,
         };
-        result = { success: true, message: `你带上 ${RECRUIT_FOOD_COST} 单位小麦出发去村庄招募...大约 ${RECRUIT_TICKS / TICKS_PER_DAY} 天后到达` };
+        result = { success: true, message: `你赶着${vehicle.icon}${vehicle.name}出发去村庄招募...大约1天后到达` };
         break;
       }
       case 'delegate_recruit': {
@@ -348,14 +372,16 @@ export class GameState {
           break;
         }
         this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+        const vehicle = getVehicleInfo(this.currentVehicle);
         this.recruitTask = {
           type: 'delegate',
           delegateId: characterId,
-          ticksRemaining: RECRUIT_TICKS,
-          totalTicks: RECRUIT_TICKS,
+          ticksRemaining: RECRUIT_TICKS_DELEGATE,
+          totalTicks: RECRUIT_TICKS_DELEGATE,
           phase: 'traveling',
+          vehicleId: this.currentVehicle,
         };
-        result = { success: true, message: `${delegate.name}出发去村庄招募了...消耗了 ${RECRUIT_FOOD_COST} 单位小麦` };
+        result = { success: true, message: `${delegate.name}赶着${vehicle.icon}${vehicle.name}出发去村庄招募了...约2天后带回` };
         break;
       }
       case 'recruit_choose': {
@@ -370,33 +396,39 @@ export class GameState {
           break;
         }
         const chosen = this.recruitCandidatePool[candidateIndex];
-        // 从池中移除该候选人
         this.recruitCandidatePool.splice(candidateIndex, 1);
         this.recruitHiredCount++;
-        // 使用候选人完整数据创建 NPC
         const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
         this._tryUnlockResearch();
 
-        // 检查是否还能继续选（驴车还没坐满且池中还有人）
-        if (this.recruitHiredCount < RECRUIT_MAX_HIRE && this.recruitCandidatePool.length > 0) {
-          // 不关闭选择界面，继续让玩家选
-          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）坐上了驴车！还能再选 ${RECRUIT_MAX_HIRE - this.recruitHiredCount} 人。` };
+        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
+        const maxHire = vehicle.passengerCapacity;
+
+        if (this.recruitHiredCount < maxHire && this.recruitCandidatePool.length > 0) {
+          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）坐上了${vehicle.icon}${vehicle.name}！还能再选 ${maxHire - this.recruitHiredCount} 人。` };
         } else {
-          // 驴车坐满了或池子空了，返回
-          this.recruitTask = null;
-          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `驴车坐满了 ${RECRUIT_MAX_HIRE} 人，该回去了。`;
-          result = { success: true, message: `${chosen.name}坐上了驴车！${poolMsg}`, recruitDone: true };
+          // 坐满了或池子空了，进入回程阶段
+          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `${vehicle.name}坐满了 ${maxHire} 人，该回去了。`;
+          this.recruitTask.phase = 'returning';
+          this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
+          this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
+          this.addLog(`${chosen.name}坐上了${vehicle.name}！${poolMsg}`);
+          result = { success: true, message: `${chosen.name}坐上了${vehicle.name}！回程中...` };
         }
         break;
       }
       case 'recruit_skip': {
-        // 亲自招募到达村庄后放弃选择（返回）
+        // 亲自招募到达村庄后放弃选择，进入回程
         if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
           result = { success: false, message: '当前不在选择阶段' };
           break;
         }
-        this.recruitTask = null;
-        result = { success: true, message: '你没有找到合适的人选，打道回府。' };
+        // 进入回程阶段
+        this.recruitTask.phase = 'returning';
+        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
+        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
+        this.addLog('你没有找到合适的人选，赶车回去了。');
+        result = { success: true, message: '回程中...' };
         break;
       }
       case 'set_player_roles':
@@ -527,6 +559,46 @@ export class GameState {
         result = this.researchSystem.cancelLearning(cancelLearnerId, cancelLearner);
         break;
       }
+
+      // ====== 交通工具升级 ======
+      case 'upgrade_vehicle': {
+        if (this.recruitTask) {
+          result = { success: false, message: '招募进行中，无法更换载具' };
+          break;
+        }
+        const nextVehicle = getNextVehicle(this.currentVehicle);
+        if (!nextVehicle) {
+          result = { success: false, message: '已经是最好的载具了' };
+          break;
+        }
+        // 检查前置
+        if (nextVehicle.requires && this.currentVehicle !== nextVehicle.requires) {
+          result = { success: false, message: `需要先拥有${getVehicleInfo(nextVehicle.requires).name}` };
+          break;
+        }
+        // 检查材料
+        const lacks = [];
+        for (const cost of nextVehicle.upgradeCost) {
+          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
+          if (have < cost.amount) {
+            lacks.push(`${cost.name}(${have}/${cost.amount})`);
+          }
+        }
+        if (lacks.length > 0) {
+          result = { success: false, message: `材料不足：${lacks.join('、')}` };
+          break;
+        }
+        // 消耗材料
+        for (const cost of nextVehicle.upgradeCost) {
+          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
+        }
+        const oldVehicle = getVehicleInfo(this.currentVehicle);
+        this.currentVehicle = nextVehicle.id;
+        this.addLog(`${oldVehicle.name}换成了${nextVehicle.icon}${nextVehicle.name}！一趟最多可招 ${nextVehicle.passengerCapacity} 人。`);
+        result = { success: true, message: `升级为${nextVehicle.icon}${nextVehicle.name}！` };
+        break;
+      }
+
       default:
         result = { success: false, message: '未知操作' };
     }
@@ -566,7 +638,8 @@ export class GameState {
 
     this.recruitCandidatePool = pool;
     this.recruitHiredCount = 0;
-    this.addLog('你赶着驴车来到村庄，有10位村民愿意跟随你。驴车太小，一趟最多坐四个人。');
+    const vehicle = getVehicleInfo(this.currentVehicle);
+    this.addLog(`你赶着${vehicle.icon}${vehicle.name}来到村庄，有10位村民愿意跟随你。${vehicle.description}`);
   }
 
   /**
@@ -578,28 +651,37 @@ export class GameState {
 
     this.recruitTask.ticksRemaining--;
 
-    if (this.recruitTask.ticksRemaining <= 0) {
-      if (this.recruitTask.type === 'self') {
-        // 亲自招募到达村庄：展示候选人池
+    if (this.recruitTask.ticksRemaining > 0) return;
+
+    // 时间到
+    if (this.recruitTask.type === 'self') {
+      if (this.recruitTask.phase === 'traveling') {
+        // 亲自去：到达村庄
         this.recruitTask.phase = 'waiting_choice';
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
-      } else {
-        // 派人招募到达：从池中随机带1人
-        if (this.recruitCandidatePool.length > 0) {
-          const randIdx = Math.floor(Math.random() * this.recruitCandidatePool.length);
-          const chosen = this.recruitCandidatePool.splice(randIdx, 1)[0];
-          const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
-          this.recruitHiredCount++;
-          const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-          this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）！`);
-        } else {
-          const { name } = this._createNPCFarmer({ minKnowledge: 1 });
-          const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-          this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
-        }
+      } else if (this.recruitTask.phase === 'returning') {
+        // 亲自去：回程完成
+        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
+        this.addLog(`你赶着${vehicle.icon}${vehicle.name}回到了家。`);
         this.recruitTask = null;
-        this._tryUnlockResearch();
       }
+    } else {
+      // 派人去：到达 → 自动带回
+      const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
+      if (this.recruitCandidatePool.length > 0) {
+        const randIdx = Math.floor(Math.random() * this.recruitCandidatePool.length);
+        const chosen = this.recruitCandidatePool.splice(randIdx, 1)[0];
+        const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
+        this.recruitHiredCount++;
+        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+        this.addLog(`${delegate ? delegate.name : '派人'}赶着${vehicle.icon}${vehicle.name}从村庄带回了 ${name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）！`);
+      } else {
+        const { name } = this._createNPCFarmer({ minKnowledge: 1 });
+        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+        this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
+      }
+      this.recruitTask = null;
+      this._tryUnlockResearch();
     }
   }
 

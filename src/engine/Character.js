@@ -132,6 +132,10 @@ export class Character {
     // 种地通过 hasRole('farmer') + hasFarmerPost() 判断
     this.posts = [];             // ['zhike', 'fangshi', ...]
     this.learnedGongfu = [];     // 已学会的功法 ID 列表（退休失效）
+
+    // ====== HR（知客）经验 ======
+    // 通过干活积累，影响招募时能看到的候选人信息
+    this.hrExp = 0;
   }
 
   // 兼容旧代码
@@ -402,6 +406,11 @@ export class Character {
     this.knowledgeAttributes[knowledgeKey] = Math.min(100, this.knowledgeAttributes[knowledgeKey] + actualGain);
   }
 
+  gainHRExp(amount) {
+    if (this.isPlayer) return; // 玩家不需要HR等级
+    this.hrExp = (this.hrExp || 0) + amount;
+  }
+
   modifyBaseAttribute(attrKey, amount) {
     if (!(attrKey in this.baseAttributes)) return;
     this.baseAttributes[attrKey] = Math.max(1, Math.min(100, this.baseAttributes[attrKey] + amount));
@@ -437,6 +446,8 @@ export class Character {
       // 岗位系统
       posts: [...this.posts],
       learnedGongfu: [...this.learnedGongfu],
+      // HR经验
+      hrExp: this.hrExp || 0,
     };
   }
 
@@ -460,6 +471,8 @@ export class Character {
     // 岗位系统
     char.posts = data.posts || [];
     char.learnedGongfu = data.learnedGongfu || [];
+    // HR经验
+    char.hrExp = data.hrExp || 0;
     return char;
   }
 }

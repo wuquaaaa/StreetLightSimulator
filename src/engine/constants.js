@@ -94,11 +94,16 @@ export const NPC_SPIRIT_AURA_THRESHOLD = 40;
 
 // ====== 招募系统 ======
 // 农民队长去附近村庄招募普通农民
-export const RECRUIT_TICKS = 30;              // 招募耗时：3天 = 30 tick（亲自/派人相同）
+export const RECRUIT_TICKS_SELF = 10;         // 亲自去耗时：1天 = 10 tick（去1天，选人后回1天）
+export const RECRUIT_TICKS_DELEGATE = 20;     // 派人去耗时：2天 = 20 tick（往返）
 export const RECRUIT_FOOD_COST = 10;          // 每次招募消耗食物（路费+饭钱）
 export const RECRUIT_POOL_SIZE = 10;          // 候选人池大小（十选三）
-export const RECRUIT_MAX_HIRE = 3;            // 每趟驴车最多坐4人（含赶车），即最多招3人
-// 故事设定：穷得只剩一头驴和一辆破驴车，驴车只能坐下四个人（你+3人）
+export const RECRUIT_RETURN_TICKS = 10;       // 亲自去选完人后回程：1天 = 10 tick
+// 最大招募人数由交通工具决定（驴车3人，马车5人，牛车7人）
+
+// ====== HR（知客）等级系统 ======
+// NPC通过干活积累经验提升知客等级，等级越高招募时能看到越多信息
+export const HR_EXP_PER_TICK = 0.1;          // 每tick干活获得0.1知客经验
 
 // ====== 灵田升级系统 ======
 // 灵田类型

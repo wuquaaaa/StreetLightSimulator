@@ -40,6 +40,7 @@ export const SaveSystem = {
       recruitTask: game.recruitTask ? { ...game.recruitTask } : null,
       recruitCandidatePool: game.recruitCandidatePool || [],
       recruitHiredCount: game.recruitHiredCount || 0,
+      currentVehicle: game.currentVehicle || 'donkey_cart',
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
     };
@@ -98,6 +99,7 @@ export const SaveSystem = {
     game.recruitTask = data.recruitTask || null;
     game.recruitCandidatePool = data.recruitCandidatePool || [];
     game.recruitHiredCount = data.recruitHiredCount || 0;
+    game.currentVehicle = data.currentVehicle || 'donkey_cart';
 
     // 研究系统
     if (data.researchSystem) {
