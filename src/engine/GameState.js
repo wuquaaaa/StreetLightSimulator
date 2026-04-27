@@ -220,7 +220,7 @@ export class GameState {
 
     // 司务堂（研究系统）tick
     if (this.researchSystem.unlocked) {
-      const researchMsgs = this.researchSystem.tick(this.characters);
+      const researchMsgs = this.researchSystem.tick(this.characters, this.farm);
       for (const msg of researchMsgs.messages) {
         this.addLog(msg);
       }
@@ -511,7 +511,7 @@ export class GameState {
           break;
         }
         const allChars = [this.player, ...this.characters];
-        result = this.researchSystem.startLearning(learnerId, learnGongfuId, learner, allChars);
+        result = this.researchSystem.startLearning(learnerId, learnGongfuId, learner, allChars, this.farm);
         break;
       }
       case 'cancel_learn_gongfu': {

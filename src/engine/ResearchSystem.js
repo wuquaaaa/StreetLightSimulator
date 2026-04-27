@@ -10,7 +10,9 @@
  * 2. 功法帖（功法研究）：
  *    - 研究解锁功法供 NPC 学习
  *    - 功法绑定 NPC 个人，退休失效
- *    - 学习时间受导师（已学会的 NPC）加速
+ *    - 学习时间受导师（已学会且在同工作地点的 NPC）加速
+ *    - 农田阶段：导师和徒弟必须在同一块地上
+ *    - 后续（丹炉等）：同理，同工作台/同丹炉
  *
  * 触发条件：玩家第一次完成招募后自动解锁
  */
@@ -129,14 +131,58 @@ export class ResearchSystem {
   }
 
   /**
+   * 检查某个 NPC 学习功法时，是否有导师在同一工作地点
+   * 农田阶段：导师和徒弟必须被分配到同一块地（assignedTo 重叠）
+   * 后续扩展（丹炉等）：根据工作台/丹炉分配判断
+   *
+   * @param {string} learnerId - 学徒 ID
+   * @param {string} gongfuId - 功法 ID
+   * @param {Character[]} allNPCs - 所有 NPC（含玩家）
+   * @param {FarmSystem} [farm] - 农田系统（用于检查地块分配）
+   * @returns {{ hasMentor: boolean, mentors: Character[] }}
+   */
+  _getMentorsOnSameWorksite(learnerId, gongfuId, allNPCs, farm) {
+    // 找到所有已学会该功法的非本人NPC
+    const mentors = allNPCs.filter(n =>
+      n.id !== learnerId &&
+      !n.isRetired &&
+      n.learnedGongfu &&
+      n.learnedGongfu.includes(gongfuId)
+    );
+
+    if (!farm || mentors.length === 0) {
+      return { hasMentor: false, mentors: [] };
+    }
+
+    // 获取学徒负责的地块
+    const learnerPlots = farm.getPlotsForCharacter(learnerId);
+    if (learnerPlots.length === 0) {
+      return { hasMentor: false, mentors: [] };
+    }
+    const learnerPlotIds = new Set(learnerPlots.map(p => p.id));
+
+    // 筛选与学徒在同一地块的导师
+    const onSiteMentors = mentors.filter(mentor => {
+      const mentorPlots = farm.getPlotsForCharacter(mentor.id);
+      return mentorPlots.some(p => learnerPlotIds.has(p.id));
+    });
+
+    return {
+      hasMentor: onSiteMentors.length > 0,
+      mentors: onSiteMentors,
+    };
+  }
+
+  /**
    * NPC 开始学习功法
    * @param {string} characterId
    * @param {string} gongfuId
    * @param {Character} npc - NPC 角色对象
-   * @param {Character[]} allNPCs - 所有 NPC 列表（用于检查导师）
+   * @param {Character[]} allNPCs - 所有 NPC 列表（含玩家）
+   * @param {FarmSystem} [farm] - 农田系统（用于检查同地块导师）
    * @returns {{ success: boolean, message: string }}
    */
-  startLearning(characterId, gongfuId, npc, allNPCs) {
+  startLearning(characterId, gongfuId, npc, allNPCs, farm) {
     // 检查是否已在学习
     if (this.npcLearning.has(characterId)) {
       const cur = getGongfuInfo(this.npcLearning.get(characterId).gongfuId);
@@ -154,12 +200,8 @@ export class ResearchSystem {
     const gongfu = getGongfuInfo(gongfuId);
     if (!gongfu) return { success: false, message: '未知功法' };
 
-    // 检查是否有导师（其他已学会此功法的NPC）
-    const hasMentor = allNPCs.some(other =>
-      other.id !== characterId &&
-      other.learnedGongfu &&
-      other.learnedGongfu.includes(gongfuId)
-    );
+    // 检查是否有同工作地点的导师
+    const { hasMentor, mentors } = this._getMentorsOnSameWorksite(characterId, gongfuId, allNPCs, farm);
 
     // 基础学习时间，有导师时缩短
     const baseTicks = gongfu.learnTime * BASE_LEARN_TICKS_PER_DAY;
@@ -177,7 +219,9 @@ export class ResearchSystem {
       hasMentor,
     });
 
-    const mentorText = hasMentor ? '（有导师指点，进度加快）' : '';
+    const mentorText = hasMentor
+      ? `（${mentors.map(m => m.name).join('、')}在同地块传功指点，进度加快）`
+      : '';
     return {
       success: true,
       message: `${npc.name}开始修习「${gongfu.name}」，预计需要 ${Math.ceil(finalTicks / TICKS_PER_DAY)} 天${mentorText}`,
@@ -199,9 +243,10 @@ export class ResearchSystem {
   /**
    * 每 tick 推进研究进度
    * @param {Character[]} npcs - 所有 NPC
+   * @param {FarmSystem} [farm] - 农田系统（用于动态检查导师同地块）
    * @returns {{ messages: string[] }}
    */
-  tick(npcs) {
+  tick(npcs, farm) {
     const messages = [];
 
     // 推进功法研究
@@ -218,6 +263,28 @@ export class ResearchSystem {
 
     // 推进 NPC 学习
     for (const [charId, learning] of this.npcLearning) {
+      // 动态检查导师状态（导师可能被重新分配地块）
+      const { hasMentor } = this._getMentorsOnSameWorksite(
+        charId, learning.gongfuId, npcs, farm
+      );
+      const prevMentor = learning.hasMentor;
+      learning.hasMentor = hasMentor;
+
+      // 提示导师状态变化
+      if (prevMentor && !hasMentor) {
+        const npc = npcs.find(n => n.id === charId);
+        const gongfu = getGongfuInfo(learning.gongfuId);
+        if (npc && gongfu) {
+          messages.push(`${npc.name}修习「${gongfu.name}」失去导师指点，进度变慢了。`);
+        }
+      } else if (!prevMentor && hasMentor) {
+        const npc = npcs.find(n => n.id === charId);
+        const gongfu = getGongfuInfo(learning.gongfuId);
+        if (npc && gongfu) {
+          messages.push(`${npc.name}修习「${gongfu.name}」获得导师指点，进度加快了！`);
+        }
+      }
+
       learning.progress++;
       if (learning.progress >= learning.totalTicks) {
         const gongfu = getGongfuInfo(learning.gongfuId);
@@ -253,12 +320,10 @@ export class ResearchSystem {
   }
 
   /**
-   * 获取某功法是否有导师（已学会的 NPC）
+   * 获取某功法是否有同工作地点的导师（已学会的 NPC 且在同一地块）
    */
-  hasMentor(gongfuId, npcs) {
-    return npcs.some(npc =>
-      npc.learnedGongfu && npc.learnedGongfu.includes(gongfuId)
-    );
+  hasMentor(gongfuId, learnerId, allNPCs, farm) {
+    return this._getMentorsOnSameWorksite(learnerId, gongfuId, allNPCs, farm).hasMentor;
   }
 
   // ====== 序列化 ======
