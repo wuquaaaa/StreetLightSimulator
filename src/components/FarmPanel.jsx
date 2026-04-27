@@ -1,8 +1,100 @@
 import { useState } from 'react';
-import { Droplets, Scissors, Shovel, Sprout, Bug, Leaf, FlaskConical, X, Pencil, Check, Sparkles, Wind } from 'lucide-react';
-import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
-import { FARM_EXPAND_TICKS } from '../engine/constants';
+import { Droplets, Scissors, Shovel, Sprout, Bug, Leaf, FlaskConical, X, Pencil, Check, Sparkles, Wind, ArrowUpCircle } from 'lucide-react';
+import { FIELD_STATE, FIELD_DISPLAY, SPIRIT_LEVEL_NAMES } from '../engine/FarmSystem';
+import { FarmSystem } from '../engine/FarmSystem';
+import { FARM_EXPAND_TICKS, PLOT_TYPE_SPIRIT, SPIRIT_PLOT_MAX_LEVEL, SPIRIT_PLOT_UPGRADE_COSTS, SPIRIT_PLOT_LEVEL_BONUSES } from '../engine/constants';
 import { CROPS, FOOD_CROPS, HERB_CROPS, HERB_QUALITY } from '../data/crops';
+
+// ======================================================
+// 灵田升级确认弹窗
+// ======================================================
+function UpgradeConfirmPopup({ plot, warehouse, onConfirm, onClose }) {
+  const targetLevel = plot.plotLevel + 1;
+  if (targetLevel > SPIRIT_PLOT_MAX_LEVEL) return null;
+
+  const costs = FarmSystem.getUpgradeCost(targetLevel);
+  const bonus = SPIRIT_PLOT_LEVEL_BONUSES[targetLevel];
+  const targetName = SPIRIT_LEVEL_NAMES[targetLevel];
+
+  // 检查每项材料
+  const costChecks = costs.map(c => {
+    const have = warehouse.getItemAmount(c.category, c.itemId);
+    return { ...c, have, enough: have >= c.amount };
+  });
+  const allEnough = costChecks.every(c => c.enough);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <div className="bg-stone-800 border border-purple-700/50 rounded-lg shadow-2xl max-w-sm w-full mx-4 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-purple-400 font-bold flex items-center gap-2">
+            <Sparkles size={18} /> 灵田升级
+          </h3>
+          <button onClick={onClose} className="text-stone-500 hover:text-stone-300"><X size={18} /></button>
+        </div>
+
+        <div className="text-sm text-stone-300 mb-3">
+          将 <span className="text-amber-300">{plot.name}</span> 升级为
+          <span className="text-purple-300 font-bold ml-1">{targetName}</span>
+        </div>
+
+        {/* 升级效果 */}
+        <div className="bg-purple-950/40 border border-purple-800/30 rounded p-3 mb-3 text-xs space-y-1">
+          <div className="text-purple-300 font-semibold mb-1">升级效果：</div>
+          <div className="flex justify-between text-stone-400">
+            <span>灵气回复</span>
+            <span className="text-purple-300">×{bonus.auraRegenMul}</span>
+          </div>
+          {bonus.spiritCostReduction > 0 && (
+            <div className="flex justify-between text-stone-400">
+              <span>灵气消耗减免</span>
+              <span className="text-green-400">-{Math.round(bonus.spiritCostReduction * 100)}%</span>
+            </div>
+          )}
+          <div className="flex justify-between text-stone-400">
+            <span>灵草产量加成</span>
+            <span className="text-green-400">+{Math.round(bonus.herbYieldBonus * 100)}%</span>
+          </div>
+          <div className="flex justify-between text-stone-400">
+            <span>灵蛊概率降低</span>
+            <span className="text-green-400">-{Math.round(bonus.spiritBugReduction * 100)}%</span>
+          </div>
+        </div>
+
+        {/* 材料消耗 */}
+        <div className="bg-stone-900/50 rounded p-3 mb-4 text-xs space-y-1.5">
+          <div className="text-stone-400 font-semibold mb-1">所需材料：</div>
+          {costChecks.map((c, i) => (
+            <div key={i} className="flex justify-between">
+              <span className="text-stone-300">{c.name}</span>
+              <span className={c.enough ? 'text-green-400' : 'text-red-400'}>
+                {c.have}/{c.amount}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* 按钮 */}
+        <div className="flex gap-2">
+          <button onClick={onClose}
+            className="flex-1 px-3 py-2 text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 rounded transition-colors">
+            取消
+          </button>
+          <button
+            onClick={() => onConfirm(targetLevel)}
+            disabled={!allEnough}
+            className={`flex-1 px-3 py-2 text-xs rounded transition-colors flex items-center justify-center gap-1 ${
+              allEnough
+                ? 'bg-purple-700 hover:bg-purple-600 text-purple-100'
+                : 'bg-stone-700 text-stone-500 cursor-not-allowed'
+            }`}>
+            <ArrowUpCircle size={14} /> 升级
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ======================================================
 // 播种弹窗（分食物/灵草两栏）
@@ -24,7 +116,6 @@ function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-stone-800 border border-stone-600 rounded-lg shadow-2xl max-w-sm w-full mx-4 p-5">
-        {/* 标题 */}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-amber-400 font-bold flex items-center gap-2">
             <Sprout size={18} /> 选择种子
@@ -32,7 +123,6 @@ function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason }) {
           <button onClick={onClose} className="text-stone-500 hover:text-stone-300"><X size={18} /></button>
         </div>
 
-        {/* Tab 切换 */}
         <div className="flex gap-1 mb-3 bg-stone-900/50 rounded-lg p-1">
           <button onClick={() => setTab('food')}
             className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${tab === 'food' ? 'bg-amber-800 text-amber-200' : 'text-stone-400 hover:text-stone-300'}`}>
@@ -44,10 +134,8 @@ function SeedSelectPopup({ warehouse, onSelect, onClose, currentSeason }) {
           </button>
         </div>
 
-        {/* 季节提示 */}
         <div className="text-[10px] text-stone-500 mb-2">当前季节：<span className="text-amber-300">{currentSeason}季</span>，带 ⚠️ 表示非当季作物，产量受影响</div>
 
-        {/* 作物列表 */}
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {displayList.map(crop => (
             <button key={crop.id}
@@ -110,7 +198,7 @@ function LabeledBar({ label, value, max, color, suffix, warning }) {
 // ======================================================
 // 农田卡片
 // ======================================================
-function PlotCard({ plot, onAction, onPlant, characters, player }) {
+function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
 
@@ -121,8 +209,8 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
   const isEmpty   = plot.state === FIELD_STATE.EMPTY || plot.state === FIELD_STATE.WITHERED;
   const isPlowed  = plot.state === FIELD_STATE.PLOWED;
   const isHerb    = crop?.isHerb ?? false;
+  const isSpirit  = plot.isSpiritPlot();
 
-  // 灵气不足警告（灵草 + 灵气 < 20）
   const auraLow = isHerb && plot.spiritAura < 20;
 
   const getManagerName = (managerId) => {
@@ -137,15 +225,23 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
     setEditing(false);
   };
 
-  // 卡片边框色：灵草用紫色，普通用绿/黄
-  const borderClass = isHerb
-    ? (isReady ? 'border-purple-500/70' : isGrowing ? 'border-purple-700/50' : 'border-stone-700')
-    : (isReady ? 'border-yellow-600/50' : isGrowing ? 'border-green-700/50' : 'border-stone-700');
+  // 卡片边框色：灵田紫色光晕
+  const borderClass = isSpirit
+    ? `border-purple-${plot.plotLevel >= 2 ? '400' : '600'}/60`
+    : isHerb
+      ? (isReady ? 'border-purple-500/70' : isGrowing ? 'border-purple-700/50' : 'border-stone-700')
+      : (isReady ? 'border-yellow-600/50' : isGrowing ? 'border-green-700/50' : 'border-stone-700');
+
+  // 灵田等级标签
+  const spiritLevelName = SPIRIT_LEVEL_NAMES[plot.plotLevel];
+  const canUpgrade = !isGrowing && !isReady && plot.plotLevel < SPIRIT_PLOT_MAX_LEVEL;
+  const nextLevelName = plot.plotLevel < SPIRIT_PLOT_MAX_LEVEL
+    ? SPIRIT_LEVEL_NAMES[plot.plotLevel + 1] : null;
 
   return (
-    <div className={`rounded-lg border p-3 bg-stone-800/50 flex flex-col ${borderClass}`}>
-      {/* 头部：名称 + 状态 */}
-      <div className="flex items-center justify-between mb-2 h-5">
+    <div className={`rounded-lg border p-3 bg-stone-800/50 flex flex-col ${borderClass} ${isSpirit ? 'shadow-purple-900/20 shadow-sm' : ''}`}>
+      {/* 头部：名称 + 状态 + 灵田标签 */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
           {editing ? (
             <div className="flex items-center gap-1">
@@ -164,6 +260,16 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           {isHerb && <span className="text-[9px] px-1 py-0.5 rounded bg-purple-900/60 text-purple-300 ml-0.5">灵草</span>}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* 灵田等级徽章 */}
+          {isSpirit && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+              plot.plotLevel >= 3 ? 'bg-purple-600/80 text-purple-100'
+                : plot.plotLevel >= 2 ? 'bg-purple-700/60 text-purple-200'
+                  : 'bg-purple-800/50 text-purple-300'
+            }`}>
+              {spiritLevelName}
+            </span>
+          )}
           {plot.hasPest      && <Bug     size={11} className="text-red-400" title="虫害" />}
           {plot.hasSpiritBug && <Wind    size={11} className="text-purple-400" title="灵蛊" />}
           {auraLow           && <Sparkles size={11} className="text-orange-400" title="灵气不足" />}
@@ -181,6 +287,15 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
         </div>
       )}
 
+      {/* 灵田等级效果预览（空地/翻地状态显示） */}
+      {isSpirit && (isEmpty || isPlowed) && (
+        <div className="text-[10px] text-purple-400/70 mb-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+          <span>灵气回复 ×{plot.getLevelBonus().auraRegenMul}</span>
+          {plot.getLevelBonus().spiritCostReduction > 0 && <span>灵耗-{Math.round(plot.getLevelBonus().spiritCostReduction * 100)}%</span>}
+          <span>产量+{Math.round(plot.getLevelBonus().herbYieldBonus * 100)}%</span>
+        </div>
+      )}
+
       {/* 进度条 */}
       <div className="flex flex-col gap-1 mb-2">
         <LabeledBar label="水分" value={plot.waterLevel} max={100}
@@ -194,10 +309,10 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           suffix={isGrowing ? `${Math.floor(plot.growthProgress)}%` : isReady ? '100%' : '-'} />
         <LabeledBar label="杂草" value={plot.weedGrowth} max={100}
           color={plot.weedGrowth > 40 ? '#84cc16' : '#4d7c0f'} />
-        {/* 灵气进度条（仅灵草地块显示） */}
-        {(isHerb || isPlowed || isEmpty) && (
+        {/* 灵气进度条（灵田始终显示，普通田仅灵草/空地显示） */}
+        {(isSpirit || isHerb || isPlowed || isEmpty) && (
           <LabeledBar label="灵气" value={plot.spiritAura} max={100}
-            color={plot.spiritAura < 20 ? '#f97316' : '#a855f7'}
+            color={plot.spiritAura < 20 ? '#f97316' : isSpirit ? '#c084fc' : '#a855f7'}
             warning={auraLow} />
         )}
       </div>
@@ -214,7 +329,7 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
       {auraLow && isGrowing && (
         <div className="flex items-center gap-1.5 bg-orange-900/30 border border-orange-700/40 rounded px-2 py-1 mb-2">
           <Sparkles size={11} className="text-orange-400 shrink-0" />
-          <span className="text-[10px] text-orange-300">灵气不足，灵草生长已停止！待灵气自然恢复或翻地休整</span>
+          <span className="text-[10px] text-orange-300">灵气不足，灵草生长已停止！</span>
         </div>
       )}
 
@@ -227,10 +342,19 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           </button>
         )}
         {isPlowed && (
-          <button onClick={() => onPlant(plot.id)}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800/60 hover:bg-green-700/60 text-green-200 rounded transition-colors">
-            <Sprout size={11} /> 播种
-          </button>
+          <>
+            <button onClick={() => onPlant(plot.id)}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-800/60 hover:bg-green-700/60 text-green-200 rounded transition-colors">
+              <Sprout size={11} /> 播种
+            </button>
+            {/* 灵田升级按钮（仅空地/翻地状态） */}
+            {canUpgrade && (
+              <button onClick={() => onUpgrade(plot)}
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-800/60 hover:bg-purple-700/60 text-purple-200 rounded transition-colors">
+                <ArrowUpCircle size={11} /> 升灵田
+              </button>
+            )}
+          </>
         )}
         {isReady && (
           <button onClick={() => onAction('harvest', { plotId: plot.id })}
@@ -260,7 +384,6 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           <Leaf size={11} /> 除草
         </button>
 
-        {/* 普通虫害 */}
         {plot.hasPest && (
           <button onClick={() => onAction('remove_pest', { plotId: plot.id })}
             className="flex items-center gap-1 px-2 py-1 text-xs bg-red-800/60 hover:bg-red-700/60 text-red-200 rounded transition-colors"
@@ -269,7 +392,6 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           </button>
         )}
 
-        {/* 灵蛊（灵草专属） */}
         {plot.hasSpiritBug && (
           <button onClick={() => onAction('remove_spirit_bug', { plotId: plot.id })}
             className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-800/60 hover:bg-purple-700/60 text-purple-200 rounded transition-colors"
@@ -278,7 +400,6 @@ function PlotCard({ plot, onAction, onPlant, characters, player }) {
           </button>
         )}
 
-        {/* 右侧状态提示 */}
         {isReady && <span className="text-[10px] text-yellow-400 ml-auto">✨ 已成熟</span>}
         {plot.cropYieldMod < 0.99 && plot.cropId && !isReady && (
           <span className="ml-auto text-[10px] text-red-500/80">减产{Math.round((1 - plot.cropYieldMod) * 100)}%</span>
@@ -327,11 +448,18 @@ function HerbInventoryBar({ warehouse }) {
 // ======================================================
 export default function FarmPanel({ game, onAction }) {
   const [plantingPlotId, setPlantingPlotId] = useState(null);
+  const [upgradePlot, setUpgradePlot] = useState(null);
   const handlePlant = (plotId) => setPlantingPlotId(plotId);
   const handleSeedSelect = (cropId) => {
     if (plantingPlotId) {
       onAction('plant', { plotId: plantingPlotId, cropId });
       setPlantingPlotId(null);
+    }
+  };
+  const handleUpgradeConfirm = (targetLevel) => {
+    if (upgradePlot) {
+      onAction('upgrade_spirit_plot', { plotId: upgradePlot.id, level: targetLevel });
+      setUpgradePlot(null);
     }
   };
 
@@ -340,12 +468,19 @@ export default function FarmPanel({ game, onAction }) {
   const player     = game.player;
   const season     = game.season || '春';
 
+  // 统计灵田数量
+  const spiritPlotCount = plots.filter(p => p.isSpiritPlot()).length;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-amber-400">🌾 农田</h2>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-stone-400">{plots.length} 块农田 · <span className="text-amber-300">{season}季</span></span>
+          <span className="text-xs text-stone-400">
+            {plots.length} 块农田
+            {spiritPlotCount > 0 && <span className="text-purple-400 ml-1">· {spiritPlotCount}块灵田</span>}
+            <span className="ml-1"><span className="text-amber-300">{season}季</span></span>
+          </span>
           <button onClick={() => onAction('expand_farm')}
             className="px-3 py-1.5 text-xs bg-stone-700 hover:bg-stone-600 text-stone-200 rounded transition-colors">
             + 开垦新田
@@ -353,14 +488,12 @@ export default function FarmPanel({ game, onAction }) {
         </div>
       </div>
 
-      {/* 药材库存（有库存时才显示） */}
       <HerbInventoryBar warehouse={game.warehouse} />
 
-      {/* 农田卡片 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {plots.map(plot => (
           <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant}
-            characters={characters} player={player} />
+            onUpgrade={setUpgradePlot} characters={characters} player={player} />
         ))}
       </div>
 
@@ -392,6 +525,15 @@ export default function FarmPanel({ game, onAction }) {
           onSelect={handleSeedSelect}
           onClose={() => setPlantingPlotId(null)}
           currentSeason={season}
+        />
+      )}
+
+      {upgradePlot && (
+        <UpgradeConfirmPopup
+          plot={upgradePlot}
+          warehouse={game.warehouse}
+          onConfirm={handleUpgradeConfirm}
+          onClose={() => setUpgradePlot(null)}
         />
       )}
     </div>

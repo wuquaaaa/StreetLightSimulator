@@ -234,6 +234,34 @@ export class GameState {
           result = { success: false, message: '无效的角色参数' };
         }
         break;
+      case 'upgrade_spirit_plot': {
+        // 灵田升级：检查材料 → 消耗 → 执行升级
+        const targetLevel = params.level || 1;
+        const costs = FarmSystem.getUpgradeCost(targetLevel);
+        if (costs.length === 0) {
+          result = { success: false, message: '无效的升级目标' };
+          break;
+        }
+        // 检查材料是否足够
+        const lacks = [];
+        for (const cost of costs) {
+          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
+          if (have < cost.amount) {
+            lacks.push(`${cost.name}(${have}/${cost.amount})`);
+          }
+        }
+        if (lacks.length > 0) {
+          result = { success: false, message: `材料不足：${lacks.join('、')}` };
+          break;
+        }
+        // 消耗材料
+        for (const cost of costs) {
+          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
+        }
+        // 执行升级
+        result = this.farm.upgradeToSpirit(params.plotId, targetLevel);
+        break;
+      }
       default:
         result = { success: false, message: '未知操作' };
     }
