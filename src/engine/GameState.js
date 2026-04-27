@@ -10,7 +10,7 @@ import { SaveSystem } from './SaveSystem';
 import { NPCAISystem } from './NPCAISystem';
 import { FoodSystem } from './FoodSystem';
 import { EventSystem } from './EventSystem';
-import { NPC_NAMES, MALE_NAMES, FEMALE_NAMES, generateAppearance } from '../data/names';
+import { NPC_NAMES, generateName, generateAppearance } from '../data/names';
 import { getRoleName } from '../data/roles';
 import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
@@ -448,12 +448,9 @@ export class GameState {
     for (let i = 0; i < RECRUIT_CANDIDATE_COUNT; i++) {
       // 性别
       const gender = Math.random() < 0.55 ? 'male' : 'female';
-      const namePool = gender === 'male' ? MALE_NAMES : FEMALE_NAMES;
-      const available = namePool.filter(n => !existing.has(n));
-      if (available.length === 0) break;
 
-      const nameIdx = Math.floor(Math.random() * available.length);
-      const name = available[nameIdx];
+      // 组合式名字（自动避重）
+      const name = generateName(gender, existing);
       existing.add(name);
 
       // 年龄
@@ -512,7 +509,7 @@ export class GameState {
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
       } else {
         // 派人招募到达：自动带回（随机）
-        const { name } = this._createNPCFarmer({ minKnowledge: 1, avoidExistingNames: true });
+        const { name } = this._createNPCFarmer({ minKnowledge: 1 });
         const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
         this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
         this.recruitPool--;
@@ -546,18 +543,12 @@ export class GameState {
 
     // 性别 & 名字
     const gender = candidateData?.gender || (Math.random() < 0.55 ? 'male' : 'female');
-    const namePool = gender === 'male' ? MALE_NAMES : FEMALE_NAMES;
     let name;
     if (candidateData?.name) {
       name = candidateData.name;
-    } else if (avoidExistingNames) {
-      const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-      const available = namePool.filter(n => !existing.has(n));
-      name = available.length > 0
-        ? available[Math.floor(Math.random() * available.length)]
-        : `${gender === 'male' ? '农民' : '农妇'}${this.characters.length + 2}号`;
     } else {
-      name = namePool[Math.floor(Math.random() * namePool.length)];
+      const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
+      name = generateName(gender, existing);
     }
 
     // 年龄
