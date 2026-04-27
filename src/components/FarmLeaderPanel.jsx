@@ -333,14 +333,7 @@ function PersonnelTab({ game }) {
   );
 }
 
-// ========== 主面板 ==========
-const TABS = [
-  { id: 'overview', label: '农田概览', icon: '🌾' },
-  { id: 'personnel', label: '人员管理', icon: '👥' },
-];
-
 export default function FarmLeaderPanel({ game, onAction }) {
-  const [activeTab, setActiveTab] = useState('overview');
   const [selectedPlot, setSelectedPlot] = useState(null);
   const plots = game.farm.plots;
 
@@ -360,35 +353,15 @@ export default function FarmLeaderPanel({ game, onAction }) {
         <span className="text-xs text-stone-500">（农民队长视角）</span>
       </div>
 
-      {/* Tab 导航 */}
-      <div className="flex gap-1 mb-4">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
-              ${activeTab === tab.id
-                ? 'bg-amber-700/60 text-amber-200 border border-amber-600/50'
-                : 'bg-stone-800/50 text-stone-400 border border-stone-700/30 hover:text-stone-300 hover:bg-stone-700/50'
-              }`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab 内容 */}
-      {activeTab === 'overview' && (
-        <OverviewTab
-          game={game}
-          selectedPlot={selectedPlot}
-          setSelectedPlot={setSelectedPlot}
-          onAction={onAction}
-        />
-      )}
-      {activeTab === 'personnel' && (
+      <OverviewTab
+        game={game}
+        selectedPlot={selectedPlot}
+        setSelectedPlot={setSelectedPlot}
+        onAction={onAction}
+      />
+      <div className="mt-4">
         <PersonnelTab game={game} />
-      )}
+      </div>
     </div>
   );
 }
