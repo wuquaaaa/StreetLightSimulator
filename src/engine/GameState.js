@@ -19,8 +19,7 @@ import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
-  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS,
-  RECRUIT_CANDIDATE_COUNT,
+  RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE, RECRUIT_MAX_HIRE, RECRUIT_POOL_REFRESH_TICKS,
 } from './constants';
 
 // 纯委托映射：action → { target, method }
@@ -74,11 +73,12 @@ export class GameState {
     // recruitTask: null | { type: 'self'|'delegate', delegateId?: string, ticksRemaining, totalTicks, phase: 'traveling'|'waiting_choice' }
     //   - self 亲自去：phase='traveling' 到达后切 'waiting_choice' 等玩家选人
     //   - delegate 派人：phase='traveling' 到达后自动带回（随机）
-    // candidates: 亲自到达村庄后的候选人列表 [{name, age, farming, personality}]
+    // recruitCandidatePool: 候选人池（最多10人），refreshTicks 到期后刷新
+    // recruitHiredCount: 本池已招走人数（最多3人后需等刷新）
     this.recruitTask = null;
-    this.recruitPool = RECRUIT_POOL_MAX;
-    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
-    this.recruitCandidates = []; // 到达村庄后的候选列表
+    this.recruitCandidatePool = [];  // [{name, gender, age, originTrait, generalTraits, fate, appearance}]
+    this.recruitHiredCount = 0;
+    this.recruitPoolRefreshTicks = 0; // 0 = 初始时还没刷新，第一次招募会触发
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -303,9 +303,13 @@ export class GameState {
           result = { success: false, message: '已有招募任务进行中' };
           break;
         }
-        if (this.recruitPool <= 0) {
-          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了' };
+        if (this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
+          result = { success: false, message: '本批招满了，等村庄来新人吧' };
           break;
+        }
+        // 首次出发时生成候选人池
+        if (this.recruitCandidatePool.length === 0) {
+          this._refreshCandidatePool();
         }
         const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
         if (foodAmount < RECRUIT_FOOD_COST) {
@@ -319,7 +323,6 @@ export class GameState {
           totalTicks: RECRUIT_TICKS,
           phase: 'traveling',
         };
-        this.recruitCandidates = [];
         result = { success: true, message: `你带上 ${RECRUIT_FOOD_COST} 单位小麦出发去村庄招募...大约 ${RECRUIT_TICKS / TICKS_PER_DAY} 天后到达` };
         break;
       }
@@ -334,9 +337,13 @@ export class GameState {
           result = { success: false, message: '已有招募任务进行中' };
           break;
         }
-        if (this.recruitPool <= 0) {
-          result = { success: false, message: '附近村庄暂时没有愿意跟随的人了' };
+        if (this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
+          result = { success: false, message: '本批招满了，等村庄来新人吧' };
           break;
+        }
+        // 首次派出时生成候选人池
+        if (this.recruitCandidatePool.length === 0) {
+          this._refreshCandidatePool();
         }
         const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
         if (foodAmount < RECRUIT_FOOD_COST) {
@@ -361,39 +368,47 @@ export class GameState {
           totalTicks: RECRUIT_TICKS,
           phase: 'traveling',
         };
-        this.recruitCandidates = [];
         result = { success: true, message: `${delegate.name}出发去村庄招募了...消耗了 ${RECRUIT_FOOD_COST} 单位小麦` };
         break;
       }
       case 'recruit_choose': {
-        // 亲自招募到达村庄后选择候选人
+        // 亲自招募到达村庄后从候选人池选人
         if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
           result = { success: false, message: '当前不在选择阶段' };
           break;
         }
         const { candidateIndex } = params;
-        if (candidateIndex == null || candidateIndex < 0 || candidateIndex >= this.recruitCandidates.length) {
+        if (candidateIndex == null || candidateIndex < 0 || candidateIndex >= this.recruitCandidatePool.length) {
           result = { success: false, message: '无效的选择' };
           break;
         }
-        const chosen = this.recruitCandidates[candidateIndex];
+        const chosen = this.recruitCandidatePool[candidateIndex];
+        // 从池中移除该候选人
+        this.recruitCandidatePool.splice(candidateIndex, 1);
+        this.recruitHiredCount++;
         // 使用候选人完整数据创建 NPC
         const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
-        this.recruitPool--;
-        this.recruitTask = null;
-        this.recruitCandidates = [];
         this._tryUnlockResearch();
-        result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）加入了你的队伍！` };
+
+        // 检查是否还能继续选（本批还没招满且池中还有人）
+        if (this.recruitHiredCount < RECRUIT_MAX_HIRE && this.recruitCandidatePool.length > 0) {
+          // 不关闭选择界面，继续让玩家选
+          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）加入了你的队伍！还可以再选 ${RECRUIT_MAX_HIRE - this.recruitHiredCount} 人。` };
+        } else {
+          // 招满了或池子空了，返回
+          this.recruitTask = null;
+          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `本批已招满 ${RECRUIT_MAX_HIRE} 人。`;
+          result = { success: true, message: `${chosen.name}加入了！${poolMsg}`, recruitDone: true };
+        }
         break;
       }
       case 'recruit_skip': {
-        // 亲自招募到达村庄后放弃选择（返回，不消耗招募池）
+        // 亲自招募到达村庄后放弃选择（返回）
         if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
           result = { success: false, message: '当前不在选择阶段' };
           break;
         }
         this.recruitTask = null;
-        this.recruitCandidates = [];
         result = { success: true, message: '你没有找到合适的人选，打道回府。' };
         break;
       }
@@ -543,61 +558,42 @@ export class GameState {
   }
 
   /**
-   * 生成候选人列表（亲自招募到达村庄后调用）
-   * 候选人包含：名字、性别、年龄、出身、特质、外貌
+   * 刷新候选人池（十选三模式）
+   * 一次性生成 RECRUIT_POOL_SIZE 个候选人
    */
-  _generateCandidates() {
-    const candidates = [];
+  _refreshCandidatePool() {
+    const pool = [];
     const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
 
-    for (let i = 0; i < RECRUIT_CANDIDATE_COUNT; i++) {
-      // 性别
+    for (let i = 0; i < RECRUIT_POOL_SIZE; i++) {
       const gender = Math.random() < 0.55 ? 'male' : 'female';
-
-      // 组合式名字（自动避重）
       const name = generateName(gender, existing);
       existing.add(name);
-
-      // 年龄
       const age = 18 + Math.floor(Math.random() * 35);
-
-      // 出身特质
       const originTrait = rollOriginTrait();
-
-      // 通用特质
       const generalTraits = rollGeneralTraits(Math.random() < 0.3 ? 2 : 1);
-
-      // 命格（招募时不可见，但已确定）
       const fate = rollFate();
-
-      // 外貌
       const appearance = generateAppearance(gender, age);
-
-      // 耕种能力（基于出身+随机，作为初始值展示）
-      const farming = Math.max(1, originTrait.effects?.farmingBonus || 0) + Math.floor(Math.random() * 8);
-
-      candidates.push({
-        name, gender, age, farming,
-        originTrait,
-        generalTraits,
-        fate,
-        appearance,
-      });
+      pool.push({ name, gender, age, originTrait, generalTraits, fate, appearance });
     }
-    return candidates;
+
+    this.recruitCandidatePool = pool;
+    this.recruitHiredCount = 0;
+    this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
+    this.addLog('附近的村庄来了一批新的村民，有10位愿意跟随你。');
   }
 
   /**
    * 每tick处理招募任务
    */
   _tickRecruit() {
-    // 招募池自动刷新
-    if (this.recruitPool < RECRUIT_POOL_MAX) {
-      this.recruitPoolRefreshTicks--;
-      if (this.recruitPoolRefreshTicks <= 0) {
-        this.recruitPool = RECRUIT_POOL_MAX;
-        this.recruitPoolRefreshTicks = RECRUIT_POOL_REFRESH_TICKS;
-        this.addLog('附近的村庄又有人愿意跟你了。');
+    // 招募池自动刷新（当已招满或池子为空时倒计时刷新）
+    if (this.recruitCandidatePool.length === 0 || this.recruitHiredCount >= RECRUIT_MAX_HIRE) {
+      if (this.recruitPoolRefreshTicks > 0) {
+        this.recruitPoolRefreshTicks--;
+        if (this.recruitPoolRefreshTicks <= 0) {
+          this._refreshCandidatePool();
+        }
       }
     }
 
@@ -608,16 +604,23 @@ export class GameState {
 
     if (this.recruitTask.ticksRemaining <= 0) {
       if (this.recruitTask.type === 'self') {
-        // 亲自招募到达村庄：生成候选人，等玩家选择
+        // 亲自招募到达村庄：展示候选人池
         this.recruitTask.phase = 'waiting_choice';
-        this.recruitCandidates = this._generateCandidates();
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
       } else {
-        // 派人招募到达：自动带回（随机）
-        const { name } = this._createNPCFarmer({ minKnowledge: 1 });
-        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-        this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
-        this.recruitPool--;
+        // 派人招募到达：从池中随机带1人
+        if (this.recruitCandidatePool.length > 0) {
+          const randIdx = Math.floor(Math.random() * this.recruitCandidatePool.length);
+          const chosen = this.recruitCandidatePool.splice(randIdx, 1)[0];
+          const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
+          this.recruitHiredCount++;
+          const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+          this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）！`);
+        } else {
+          const { name } = this._createNPCFarmer({ minKnowledge: 1 });
+          const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+          this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
+        }
         this.recruitTask = null;
         this._tryUnlockResearch();
       }

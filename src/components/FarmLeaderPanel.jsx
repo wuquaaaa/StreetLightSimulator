@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Minus, UserPlus, Trash2, MapPin, Clock, Users, Wheat, ChevronRight, X } from 'lucide-react';
 import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
-import { FARM_EXPAND_TICKS, RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS, TICKS_PER_DAY } from '../engine/constants';
+import { FARM_EXPAND_TICKS, RECRUIT_TICKS, RECRUIT_FOOD_COST, RECRUIT_MAX_HIRE, RECRUIT_POOL_SIZE, TICKS_PER_DAY } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
 
@@ -336,8 +336,9 @@ function PersonnelTab({ game }) {
 // ========== 子面板：附近村庄（招募） ==========
 function VillageTab({ game, onAction }) {
   const recruitTask = game.recruitTask;
-  const recruitPool = game.recruitPool ?? 0;
-  const poolRefreshTicks = game.recruitPoolRefreshTicks ?? 0;
+  const candidatePool = game.recruitCandidatePool || [];
+  const hiredCount = game.recruitHiredCount || 0;
+  const poolRefreshTicks = game.recruitPoolRefreshTicks || 0;
   const poolRefreshDays = Math.ceil(poolRefreshTicks / TICKS_PER_DAY);
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
   const recruitingIds = game.recruitingNPCIds;
@@ -352,7 +353,8 @@ function VillageTab({ game, onAction }) {
 
   const foodAmount = game.warehouse.getItemAmount('food', 'wheat');
   const canAfford = foodAmount >= RECRUIT_FOOD_COST;
-  const canStartRecruit = !recruitTask && recruitPool > 0 && canAfford;
+  const canHireMore = hiredCount < RECRUIT_MAX_HIRE;
+  const canStartRecruit = !recruitTask && canHireMore && canAfford;
 
   const [selectedDelegate, setSelectedDelegate] = useState(null);
 
@@ -377,15 +379,15 @@ function VillageTab({ game, onAction }) {
       {/* 村庄状态 */}
       <div className="p-3 bg-stone-900/50 rounded-lg border border-stone-700/30 mb-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-stone-400">可招募人数</span>
-          <span className={recruitPool > 0 ? 'text-green-400 font-bold' : 'text-stone-600'}>
-            {recruitPool} / {RECRUIT_POOL_MAX}
+          <span className="text-stone-400">候选村民</span>
+          <span className={candidatePool.length > 0 && canHireMore ? 'text-green-400 font-bold' : 'text-stone-600'}>
+            {candidatePool.length} 人（已招 {hiredCount}/{RECRUIT_MAX_HIRE}）
           </span>
         </div>
-        {recruitPool <= 0 && (
+        {(!canHireMore || candidatePool.length === 0) && poolRefreshTicks > 0 && (
           <div className="text-xs text-stone-500 mt-1 flex items-center gap-1">
             <Clock size={10} />
-            村庄正在休整中，大约 {poolRefreshDays} 天后恢复
+            {hiredCount >= RECRUIT_MAX_HIRE ? '本批已招满' : '候选已选完'}，约 {poolRefreshDays} 天后刷新
           </div>
         )}
       </div>
@@ -420,7 +422,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">推荐</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              亲自前往可以看到候选人的信息（姓名、年龄、耕种能力），自己选择。但出发期间无法操作农田。
+              亲自前往可以从候选人中挑选，但出发期间无法操作农田。每次最多选 {RECRUIT_MAX_HIRE} 人。
             </div>
             <div className="flex items-center justify-between mb-2 text-xs">
               <span className="text-stone-500">花费：</span>
@@ -442,7 +444,7 @@ function VillageTab({ game, onAction }) {
                 }`}
             >
               <UserPlus size={16} />
-              {recruitPool <= 0 ? '村庄暂无可招募人员' : canAfford ? '出发招募' : '粮食不足'}
+              {!canHireMore ? '本批已招满' : canAfford ? '出发招募' : '粮食不足'}
             </button>
           </div>
 
@@ -454,7 +456,7 @@ function VillageTab({ game, onAction }) {
               <span className="text-[10px] text-stone-500 px-1.5 py-0.5 bg-stone-800 rounded">随机</span>
             </div>
             <div className="text-xs text-stone-400 mb-3">
-              派出一名空闲农民去招募，会随机带回一个人。你无法挑选，但自己可以继续照看农田。
+              派出一名空闲农民去招募，会随机带回一个人。你无法挑选，但自己可以继续照看农田。（本批最多 {RECRUIT_MAX_HIRE} 人）
             </div>
 
             {/* 选择派出的 NPC */}
@@ -533,7 +535,7 @@ function RecruitProgressCard({ label, sublabel, task }) {
 }
 
 // ========== 候选人选择弹窗 ==========
-function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
+function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHire }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -541,7 +543,10 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
           <h3 className="text-base font-bold text-amber-400">🏘 村民名单</h3>
           <button onClick={onSkip} className="text-stone-500 hover:text-stone-300 text-sm">离开</button>
         </div>
-        <p className="text-xs text-stone-400 mb-4">村长带你去见了这几位愿意跟随你的村民：</p>
+        <p className="text-xs text-stone-400 mb-4">
+          村长带你去见了这些愿意跟随的村民：
+          <span className="text-amber-300 ml-1">（已选 {hiredCount}/{maxHire}，选人后可继续选或离开）</span>
+        </p>
         <div className="space-y-2">
           {candidates.map((c, i) => (
             <div
@@ -557,38 +562,25 @@ function CandidateChoicePopup({ candidates, onChoose, onSkip }) {
                 </div>
                 <button
                   onClick={() => onChoose(i)}
-                  className="px-3 py-1 bg-green-800/60 hover:bg-green-700/60 text-green-300 rounded text-xs transition-colors flex items-center gap-1"
+                  disabled={hiredCount >= maxHire}
+                  className={`px-3 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+                    hiredCount < maxHire
+                      ? 'bg-green-800/60 hover:bg-green-700/60 text-green-300'
+                      : 'bg-stone-700/40 text-stone-600 cursor-not-allowed'
+                  }`}
                 >
                   选择 <ChevronRight size={12} />
                 </button>
               </div>
-
-              {/* 外貌 */}
               {c.appearance && (
                 <div className="text-[10px] text-stone-600 italic mb-1">{c.appearance}</div>
               )}
-
-              {/* 出身 + 特质 */}
-              <div className="flex flex-wrap gap-1 mb-1">
-                {c.originTrait && (
-                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
-                    {c.originTrait.icon} {c.originTrait.name}
-                  </span>
-                )}
-                {c.generalTraits?.map(t => (
-                  <span key={t.id} className="text-[9px] px-1.5 py-0.5 bg-stone-800 rounded text-stone-500" title={t.description}>
-                    {t.icon} {t.name}
-                  </span>
-                ))}
-              </div>
-
-              {/* 数据（耕种可见，其他隐藏） */}
-              <div className="flex gap-3 text-xs text-stone-500">
-                <span>🌾 耕种 {c.farming}</span>
-                <span>📖 学习力 ???</span>
-                <span>🎯 专注力 ???</span>
-                <span>💪 体质 ???</span>
-              </div>
+              {/* 只显示出身（表层），特质加入后才揭示 */}
+              {c.originTrait && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
+                  {c.originTrait.icon} {c.originTrait.name}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -626,7 +618,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
   }, []);
 
   // 候选人选择弹窗
-  const showCandidatePopup = game.recruitTask?.phase === 'waiting_choice' && game.recruitCandidates?.length > 0;
+  const showCandidatePopup = game.recruitTask?.phase === 'waiting_choice' && game.recruitCandidatePool?.length > 0;
 
   const handleChoose = (index) => {
     if (onAction) onAction('recruit_choose', { candidateIndex: index });
@@ -683,9 +675,11 @@ export default function FarmLeaderPanel({ game, onAction }) {
       {/* 候选人选择弹窗 */}
       {showCandidatePopup && (
         <CandidateChoicePopup
-          candidates={game.recruitCandidates}
+          candidates={game.recruitCandidatePool}
           onChoose={handleChoose}
           onSkip={handleSkip}
+          hiredCount={game.recruitHiredCount || 0}
+          maxHire={RECRUIT_MAX_HIRE}
         />
       )}
     </div>

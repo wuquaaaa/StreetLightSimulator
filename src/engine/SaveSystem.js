@@ -4,7 +4,7 @@
  * 从 GameState 中提取，负责序列化/反序列化、存取档位管理。
  */
 
-import { RECRUIT_POOL_MAX, RECRUIT_POOL_REFRESH_TICKS } from './constants';
+import { RECRUIT_POOL_REFRESH_TICKS } from './constants';
 import { ResearchSystem } from './ResearchSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
@@ -39,9 +39,9 @@ export const SaveSystem = {
       log: game.log.slice(-50),
       // 招募系统
       recruitTask: game.recruitTask ? { ...game.recruitTask } : null,
-      recruitPool: game.recruitPool,
-      recruitPoolRefreshTicks: game.recruitPoolRefreshTicks,
-      recruitCandidates: game.recruitCandidates || [],
+      recruitCandidatePool: game.recruitCandidatePool || [],
+      recruitHiredCount: game.recruitHiredCount || 0,
+      recruitPoolRefreshTicks: game.recruitPoolRefreshTicks || 0,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
     };
@@ -98,9 +98,9 @@ export const SaveSystem = {
 
     // 招募系统（兼容旧存档）
     game.recruitTask = data.recruitTask || null;
-    game.recruitCandidates = data.recruitCandidates || [];
-    game.recruitPool = data.recruitPool ?? RECRUIT_POOL_MAX;
-    game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? RECRUIT_POOL_REFRESH_TICKS;
+    game.recruitCandidatePool = data.recruitCandidatePool || [];
+    game.recruitHiredCount = data.recruitHiredCount || 0;
+    game.recruitPoolRefreshTicks = data.recruitPoolRefreshTicks ?? 0;
 
     // 研究系统
     if (data.researchSystem) {
