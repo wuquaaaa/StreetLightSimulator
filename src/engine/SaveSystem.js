@@ -16,7 +16,7 @@ export const SaveSystem = {
    */
   serialize(game) {
     const data = {
-      version: 2,
+      version: 3,
       timestamp: Date.now(),
       day: game.day,
       tickCount: game.tickCount,
@@ -43,6 +43,9 @@ export const SaveSystem = {
       currentVehicle: game.currentVehicle || 'donkey_cart',
       // 新手教程
       tutorialStep: game.tutorialStep ?? 0,
+      // 建筑系统
+      buildings: game.buildings || [],
+      buildQueue: game.buildQueue || [],
       // 司务堂
       hallBuilt: game.hallBuilt || false,
       hallBuildProgress: game.hallBuildProgress || null,
@@ -105,8 +108,23 @@ export const SaveSystem = {
     game.recruitCandidatePool = data.recruitCandidatePool || [];
     game.recruitHiredCount = data.recruitHiredCount || 0;
     game.currentVehicle = data.currentVehicle || 'donkey_cart';
-    // 新手教程（旧存档默认 -1，视为已完成）
-    game.tutorialStep = data.tutorialStep != null ? data.tutorialStep : -1;
+    // 新手教程（旧存档兼容）
+    // 旧6步(0-5) → 中9步(0-8) → 新12步(0-11)
+    if (data.tutorialStep != null) {
+      // 先映射最老的6步制
+      const V1_TO_V2 = { 1: 5, 2: 6, 3: 6, 4: 7, 5: 8 };
+      const v2Step = V1_TO_V2[data.tutorialStep] ?? data.tutorialStep;
+      // 再映射9步制到12步制（招募阶段+1，增加延迟步骤5）
+      const V2_TO_V3 = { 5: 6, 6: 7, 7: 8, 8: 9 };
+      game.tutorialStep = V2_TO_V3[v2Step] ?? v2Step;
+      // -1 和 0-4 不变
+    } else {
+      game.tutorialStep = -1;
+    }
+
+    // 建筑系统
+    game.buildings = data.buildings || [];
+    game.buildQueue = data.buildQueue || [];
 
     // 司务堂（旧存档如果研究已解锁则视为已建好）
     game.hallBuilt = data.hallBuilt || false;
@@ -130,7 +148,7 @@ export const SaveSystem = {
       const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${slot}`);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      if (!data || (data.version !== 1 && data.version !== 2)) return null;
+      if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return null;
       return SaveSystem.restoreFromData(data, GameState);
     } catch {
       return null;

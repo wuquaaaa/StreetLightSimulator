@@ -5,6 +5,7 @@ import TopBar from './TopBar';
 import FarmPanel from './FarmPanel';
 import FarmLeaderPanel from './FarmLeaderPanel';
 import RecruitPanel from './RecruitPanel';
+import BuildPanel from './BuildPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
@@ -13,7 +14,7 @@ import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer } from 'lucide-react';
 import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
@@ -63,18 +64,23 @@ export default function GameApp() {
       g.tick();
 
       const eventNotifs = g.notifications.filter(n => n.startsWith('event:'));
-      const normalNotifs = g.notifications.filter(n => !n.startsWith('event:'));
+      const tutorialNotifs = g.notifications.filter(n => n.startsWith('tutorial:'));
+      const normalNotifs = g.notifications.filter(n => !n.startsWith('event:') && !n.startsWith('tutorial:'));
 
       if (eventNotifs.length > 0) {
         const eventType = eventNotifs[0].replace('event:', '');
         setActiveEvent(eventType);
-        g.notifications = normalNotifs;
+      }
+
+      // 教程通知：自动清除，教程overlay自己处理展示
+      if (tutorialNotifs.length > 0) {
+        sfxNotify();
       }
 
       if (normalNotifs.length > 0) {
         sfxNotify();
         setPendingNotifs(normalNotifs);
-        g.notifications = g.notifications.filter(n => n.startsWith('event:'));
+        g.notifications = g.notifications.filter(n => n.startsWith('event:') || n.startsWith('tutorial:'));
       }
 
       setVersion(v => v + 1);
@@ -144,7 +150,7 @@ export default function GameApp() {
   }, []);
 
   // 新手教程：基于游戏状态动态计算当前步骤
-  const TUTORIAL_TOTAL_STEPS = 6;
+  const TUTORIAL_TOTAL_STEPS = 12;
   const isTutorialActive = game.tutorialStep >= 0
     || ((game.tutorialStep == null || game.tutorialStep === -1)
       && game.day <= 1 && (!game.characters || game.characters.length === 0));
@@ -161,9 +167,17 @@ export default function GameApp() {
     if (g.tutorialStep == null || g.tutorialStep === -1) g.tutorialStep = 0;
     const next = g.tutorialStep + 1;
     g.tutorialStep = next >= TUTORIAL_TOTAL_STEPS ? -1 : next;
-    // 步骤1 → 自动切换到附近村庄tab
+    // 步骤1 → 自动切换到农田tab（种田教学）
     if (g.tutorialStep === 1) {
+      setActiveTab('farm');
+    }
+    // 步骤6 → 自动切换到附近村庄tab（招募教学）
+    if (g.tutorialStep === 6) {
       setActiveTab('village');
+    }
+    // 步骤10 → 自动切换到建筑tab（建筑教学）
+    if (g.tutorialStep === 10) {
+      setActiveTab('building');
     }
     forceUpdate();
   }, [forceUpdate]);
@@ -182,6 +196,7 @@ export default function GameApp() {
   const sideTabs = [
     { id: 'farm', label: '农田', icon: Wheat },
     { id: 'village', label: '附近村庄', icon: MapPin },
+    { id: 'building', label: '建筑', icon: Hammer },
     { id: 'warehouse', label: '仓库', icon: Package },
     ...(game.hallBuilt ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
     { id: 'character', label: '角色', icon: User },
@@ -294,6 +309,7 @@ export default function GameApp() {
           <div className="flex-1 overflow-y-auto p-5">
             {activeTab === 'farm' && renderFarmContent()}
             {activeTab === 'village' && <RecruitPanel game={game} onAction={handleAction} />}
+            {activeTab === 'building' && <BuildPanel game={game} onAction={handleAction} />}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'research' && <ResearchPanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}

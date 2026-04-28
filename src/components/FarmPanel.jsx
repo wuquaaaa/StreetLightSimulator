@@ -200,7 +200,7 @@ function LabeledBar({ label, value, max, color, suffix, warning }) {
 // ======================================================
 // 农田卡片
 // ======================================================
-function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, showAura, canSpiritUpgrade }) {
+function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, showAura, canSpiritUpgrade, tutorialStep }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
 
@@ -212,6 +212,7 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, show
   const isPlowed  = plot.state === FIELD_STATE.PLOWED;
   const isHerb    = crop?.isHerb ?? false;
   const isSpirit  = plot.isSpiritPlot();
+  const isTutorialPlow = tutorialStep === 2 && isEmpty; // 教程翻地高亮
 
   const auraLow = isHerb && plot.spiritAura < 20;
 
@@ -241,7 +242,13 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, show
     ? SPIRIT_LEVEL_NAMES[plot.plotLevel + 1] : null;
 
   return (
-    <div className={`rounded-lg border p-3 bg-stone-800/50 flex flex-col ${borderClass} ${isSpirit ? 'shadow-purple-900/20 shadow-sm' : ''}`}>
+    <div className={`rounded-lg border p-3 bg-stone-800/50 flex flex-col ${borderClass} ${isSpirit ? 'shadow-purple-900/20 shadow-sm' : ''} ${isTutorialPlow ? 'ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.5)] animate-pulse relative' : ''}`}>
+      {/* 教程翻地箭头提示 */}
+      {isTutorialPlow && (
+        <div className="absolute -top-2 -right-2 bg-amber-500 text-stone-900 text-[10px] font-bold px-2 py-0.5 rounded-full animate-bounce z-10 whitespace-nowrap">
+          点这里翻地 👆
+        </div>
+      )}
       {/* 头部：名称 + 状态 + 灵田标签 */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -504,7 +511,7 @@ export default function FarmPanel({ game, onAction }) {
         {plots.map(plot => (
           <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant}
             onUpgrade={setUpgradePlot} characters={characters} player={player} showAura={showAura}
-            canSpiritUpgrade={canSpiritUpgrade} />
+            canSpiritUpgrade={canSpiritUpgrade} tutorialStep={game.tutorialStep ?? -1} />
         ))}
       </div>
 

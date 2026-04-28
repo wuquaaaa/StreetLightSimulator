@@ -17,6 +17,7 @@ import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
 import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
+import { BUILDING_DEFS } from '../data/buildings';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
   RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
@@ -28,7 +29,6 @@ import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERE
 // 纯委托映射：action → { target, method }
 // 不需要 GameState 介入的 case，统一处理 result.message 日志
 const FARM_DELEGATES = {
-  plant:         (g, p) => g.farm.plant(p.plotId, p.cropId, g.player, g.warehouse),
   water:         (g, p) => g.farm.water(p.plotId, g.player),
   remove_pest:   (g, p) => g.farm.removePest(p.plotId, g.player),
   remove_weeds:      (g, p) => g.farm.removeWeeds(p.plotId, g.player),
@@ -84,6 +84,10 @@ export class GameState {
 
     // 新手教程步骤：-1 = 已完成/跳过，0~N = 当前步骤
     this.tutorialStep = 0;
+
+    // 建筑系统
+    this.buildings = [];       // 已建造建筑ID列表
+    this.buildQueue = [];      // 建造队列 [{ buildingId, progress, totalTicks, story }]
 
     // 司务堂建造状态
     this.hallBuilt = false;           // 司务堂是否已建造
@@ -177,6 +181,16 @@ export class GameState {
       const eventNotifs = this.eventSystem.checkEvents(this.day);
       eventNotifs.forEach(n => this.addNotification(n));
 
+      // 教程延迟触发
+      if (this.tutorialStep === 4 && this.day >= 3) {
+        this.tutorialStep = 5; // 种田完成 → 等第3天触发招募教程
+        this.addNotification('tutorial:recruit');
+      }
+      if (this.tutorialStep === 9 && this.day >= 10) {
+        this.tutorialStep = 10; // 招募完成 → 等第10天触发建筑教程
+        this.addNotification('tutorial:build');
+      }
+
       // 食物消耗
       const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player);
       foodResult.logs.forEach(msg => this.addLog(msg));
@@ -261,6 +275,27 @@ export class GameState {
       }
     }
 
+    // 建筑建造队列进度
+    if (this.buildQueue.length > 0) {
+      const currentBuild = this.buildQueue[0];
+      currentBuild.progress++;
+      if (currentBuild.progress >= currentBuild.totalTicks) {
+        // 建造完成
+        const def = BUILDING_DEFS.find(d => d.id === currentBuild.buildingId);
+        if (def) {
+          this.buildings.push(currentBuild.buildingId);
+          if (def.onBuilt) def.onBuilt(this);
+          this.addLog(`${def.icon}${def.name}建造完成！`);
+          this.addNotification(`${def.icon}${def.name}建造完成！`);
+          // 教程推进：建造完成后进入教程step 11
+          if (this.tutorialStep === 10) {
+            this.tutorialStep = 11;
+          }
+        }
+        this.buildQueue.shift();
+      }
+    }
+
     // 司务堂（研究系统）tick
     if (this.researchSystem.unlocked) {
       const researchMsgs = this.researchSystem.tick(this.characters, this.farm);
@@ -316,6 +351,13 @@ export class GameState {
         if (result.success && result.yield) {
           this.player.changeMood(3);
           result.overflowWarnings?.forEach(msg => this.addLog(msg));
+        }
+        break;
+      case 'plant':
+        result = this.farm.plant(params.plotId, params.cropId, this.player, this.warehouse);
+        // 教程推进：播种成功 → 进入浇水照料步骤
+        if (result.success && this.tutorialStep === 3) {
+          this.tutorialStep = 4;
         }
         break;
       case 'recruit_accept': {
@@ -461,8 +503,8 @@ export class GameState {
         this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
         this.addLog(msg);
         // 新手教程：进入回程阶段
-        if (this.tutorialStep >= 0 && this.tutorialStep < 4) {
-          this.tutorialStep = 4;
+        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
+          this.tutorialStep = 9;
         }
         result = { success: true, message: msg };
         break;
@@ -481,8 +523,8 @@ export class GameState {
         this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
         this.addLog('你没有找到合适的人选，赶车回去了。');
         // 新手教程：进入回程阶段
-        if (this.tutorialStep >= 0 && this.tutorialStep < 4) {
-          this.tutorialStep = 4;
+        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
+          this.tutorialStep = 9;
         }
         result = { success: true, message: '回程中...' };
         break;
@@ -512,6 +554,10 @@ export class GameState {
             msg += `（仓库满了！${addResult.overflow}颗${seed.seedName}丢失）`;
           }
           result.message = msg;
+        }
+        // 教程推进：翻地成功 → 进入播种步骤
+        if (result.success && this.tutorialStep === 2) {
+          this.tutorialStep = 3;
         }
         break;
       }
@@ -563,7 +609,57 @@ export class GameState {
         break;
       }
 
-      // ====== 建造司务堂 ======
+      // ====== 通用建筑建造 ======
+      case 'start_build': {
+        const { buildingId } = params;
+        const def = BUILDING_DEFS.find(d => d.id === buildingId);
+        if (!def) {
+          result = { success: false, message: '未知建筑' };
+          break;
+        }
+        if (this.buildings.includes(buildingId)) {
+          result = { success: false, message: `${def.name}已经建好了` };
+          break;
+        }
+        if (this.buildQueue.length > 0) {
+          result = { success: false, message: '已有建筑正在建造中' };
+          break;
+        }
+        if (!def.requires(this)) {
+          result = { success: false, message: def.lockedReason || '建造条件不满足' };
+          break;
+        }
+        // 检查材料
+        const buildLacks = [];
+        for (const cost of def.costs) {
+          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
+          if (have < cost.amount) {
+            buildLacks.push(`${cost.name}(${have}/${cost.amount})`);
+          }
+        }
+        if (buildLacks.length > 0) {
+          result = { success: false, message: `材料不足：${buildLacks.join('、')}` };
+          break;
+        }
+        // 消耗材料
+        for (const cost of def.costs) {
+          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
+        }
+        // 加入建造队列
+        const buildTicks = def.buildDays * TICKS_PER_DAY;
+        this.buildQueue.push({
+          buildingId,
+          progress: 0,
+          totalTicks: buildTicks,
+          story: def.story || '',
+        });
+        this.addLog(`你开始建造${def.icon}${def.name}……预计需要 ${def.buildDays} 天。`);
+        if (def.story) this.addLog(def.story);
+        result = { success: true, message: `开始建造${def.name}` };
+        break;
+      }
+
+      // ====== 建造司务堂（兼容旧入口）======
       case 'build_hall': {
         if (this.hallBuilt) {
           result = { success: false, message: '司务堂已经建好了' };
@@ -791,8 +887,8 @@ export class GameState {
         this.recruitTask.phase = 'waiting_choice';
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
         // 新手教程：推进到选人步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 2) {
-          this.tutorialStep = 2;
+        if (this.tutorialStep >= 0 && this.tutorialStep < 7) {
+          this.tutorialStep = 7;
         }
       } else if (this.recruitTask.phase === 'returning') {
         // 亲自去：回程完成，批量创建 NPC
@@ -810,8 +906,8 @@ export class GameState {
         this.recruitSelectedCandidates = [];
         this.recruitHiredCount = 0;
         // 新手教程：回程完成，推进到完成步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 5) {
-          this.tutorialStep = 5;
+        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
+          this.tutorialStep = 9;
         }
       }
     } else {
@@ -861,8 +957,8 @@ export class GameState {
         this.recruitSelectedCandidates = [];
         this.recruitHiredCount = 0;
         // 新手教程：回程完成，推进到完成步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 5) {
-          this.tutorialStep = 5;
+        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
+          this.tutorialStep = 9;
         }
       }
     }
