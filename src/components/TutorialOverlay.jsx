@@ -1,75 +1,121 @@
 /**
  * 新手教程引导组件
- * 分步骤引导玩家完成首次招募流程
+ * 可操作指引：教程步骤与游戏状态联动
  */
-import { useState } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 
 // 教程步骤定义
-// position: 'center' | 'top' | 'bottom' | 'left-highlight' | 'right-highlight'
-// highlight: CSS selector hint (仅用于 UI 显示提示箭头，不做真实 DOM 定位)
+// step 0: 欢迎
+// step 1: 指向"附近村庄" tab
+// step 2: 到达村庄后，引导选人（waiting_choice 阶段）
+// step 3: 已选好人，引导点确认带走
+// step 4: 回程中，提示等待
+// step 5: 回到家，完成
 const TUTORIAL_STEPS = [
   {
     id: 0,
     title: '👋 欢迎来到路灯计划！',
-    content: '你刚刚踏上这片土地。这里有几块农田，但光靠你一个人干活效率太低了。\n\n你需要去附近村庄招募一些村民来帮忙！',
+    content: '你刚刚踏上这片陌生的土地。这里有几块农田和一间仓库，仓库里还有些粮食和种子。\n\n不过光靠你一个人干活太慢了，你需要去附近的村庄招募一些村民来帮忙！',
     position: 'center',
-    highlight: null,
-    nextLabel: '明白了，去哪招募？',
+    nextLabel: '好的，去哪招募？',
   },
   {
     id: 1,
     title: '🏘 前往"附近村庄"',
-    content: '点击左侧导航栏的【附近村庄】标签，那里可以召集到愿意跟随你的村民。',
+    content: '点击左侧导航栏的【附近村庄】，然后选择【亲自前往】出发招募！\n\n你的驴车🫏最多能带 3 个人回来。',
     position: 'left',
-    highlight: 'village',   // tab id
-    arrow: 'left',
-    nextLabel: '我看到了',
+    nextLabel: null, // 不显示"下一步"按钮，等玩家自己操作
+    autoLabel: '前往村庄中…',
   },
+  // 以下步骤由游戏状态自动触发
   {
     id: 2,
-    title: '🚗 选择出发方式',
-    content: '招募有两种方式：\n\n• 【亲自前往】你骑驴车亲自去，到了可以亲眼挑人，出发和回程各1天\n• 【派人前往】选一名村民代你去，他会按你的偏好挑人，往返2天\n\n第一次可以先试试"亲自前往"！',
+    title: '☑ 挑选村民',
+    content: '你到达了村庄！村长带了几位愿意跟随的村民来见你。\n\n点击你想带走的村民，勾选之后点底部的【带他们回家！】按钮。\n\n💡 驴车最多带 3 人，想清楚了再选！',
     position: 'center',
-    highlight: null,
-    nextLabel: '好，我先去看看',
+    nextLabel: null, // 等玩家自己操作
+    autoLabel: '已选好人…',
   },
   {
     id: 3,
-    title: '⏳ 等待抵达',
-    content: '出发后，面板会显示进度条——大约1天（10个游戏时间刻）后你就会抵达村庄。\n\n游戏时间一直在流逝，不要惊慌，等着就好！',
+    title: '✅ 确认带走',
+    content: '选好村民后，点击底部的【带 N 人回家！】按钮，赶着驴车出发回程！\n\n如果没看中合适的人，也可以点【没有合适的，回去吧】空手返回。',
     position: 'center',
-    highlight: null,
-    nextLabel: '收到，然后呢？',
+    nextLabel: null, // 等玩家自己操作
+    autoLabel: '回程中…',
   },
   {
     id: 4,
-    title: '☑ 选择你喜欢的村民',
-    content: '到达村庄后，会弹出一份村民名单。\n\n点击村民可以勾选/取消勾选，你的驴车最多带 3 人。\n\n选好之后，点击底部的【带 N 人回家！】按钮，开始回程。',
+    title: '🚗 赶驴车回家中…',
+    content: '回程大约需要1天时间，面板上会显示进度条。\n\n到家后，你带回来的村民才会正式加入队伍，可以分配农田开始劳作。',
     position: 'center',
-    highlight: null,
-    nextLabel: '明白，选好就走',
+    nextLabel: null, // 自动推进
+    autoLabel: '等待到家…',
   },
   {
     id: 5,
-    title: '🏡 回到家——村民加入！',
-    content: '回程又需要1天时间，面板会显示"赶驴车回家中…"的进度条。\n\n到家后，你带回来的村民才正式加入队伍，可以分配农田开始劳作！\n\n💡 提示：多招募几个人后，还会解锁"司务堂"，可以给村民分配岗位、学习功法！',
+    title: '🎉 村民加入队伍！',
+    content: '恭喜！你成功带回了村民，队伍壮大了！\n\n接下来你可以：\n• 去【农田】分配地块给他们\n• 人员多了还会解锁【司务堂】，分配岗位和学习功法\n\n教程到此结束，祝你在路灯计划一切顺利！',
     position: 'center',
-    highlight: null,
-    nextLabel: '好的，我知道了！',
+    nextLabel: '开始冒险！',
     isLast: true,
   },
 ];
 
-export default function TutorialOverlay({ step, onNext, onSkip }) {
+/**
+ * 判断教程当前应处于哪个步骤（基于游戏状态）
+ * 返回 null 表示教程应暂停/不显示
+ */
+export function getTutorialStepFromGameState(game) {
+  const step = game.tutorialStep ?? 0;
+  if (step < 0) return null; // 已完成
+
+  // step 0: 初始欢迎，需要玩家手动点下一步
+  if (step === 0) return 0;
+
+  // step 1: 等玩家点击前往村庄
+  if (step === 1) {
+    // 玩家已出发 → 自动推进到等待阶段
+    if (game.recruitTask && game.recruitTask.phase === 'traveling') {
+      return null; // 隐藏教程，让玩家看进度条
+    }
+    return 1;
+  }
+
+  // step 2+: 根据招募阶段自动判断
+  if (!game.recruitTask) {
+    // 招募任务已完成（returning 结束后 recruitTask 被设为 null）
+    // 检查是否刚带回了人
+    if (step >= 4 && game.characters && game.characters.length > 0) {
+      return 5; // 完成
+    }
+    return null;
+  }
+
+  if (game.recruitTask.phase === 'waiting_choice') {
+    return 2; // 到达村庄，引导选人
+  }
+
+  if (game.recruitTask.phase === 'returning') {
+    return 4; // 回程中
+  }
+
+  return null; // 其他情况（traveling 等）隐藏教程
+}
+
+export default function TutorialOverlay({ step, onNext, onSkip, game }) {
   if (step < 0 || step >= TUTORIAL_STEPS.length) return null;
 
   const current = TUTORIAL_STEPS[step];
 
+  // 步骤 3（确认带走）：检查是否已选了人
+  const selectedCount = game?.recruitCandidatePool?.filter(c => c._selected).length || 0;
+  const showConfirmHint = step === 2 && selectedCount > 0;
+
   return (
     <>
-      {/* 半透明遮罩 */}
-      <div className="fixed inset-0 bg-black/50 z-40 pointer-events-none" />
+      {/* 半透明遮罩（步骤 2/3 时用较浅遮罩，让玩家还能操作弹窗） */}
+      <div className={`fixed inset-0 z-40 pointer-events-none ${step >= 2 && step <= 3 ? 'bg-black/20' : 'bg-black/50'}`} />
 
       {/* 左侧导航高亮提示（步骤1：指向"附近村庄"） */}
       {step === 1 && (
@@ -79,14 +125,16 @@ export default function TutorialOverlay({ step, onNext, onSkip }) {
         </div>
       )}
 
-      {/* 弹窗 */}
+      {/* 弹窗——步骤 2/3 时靠上显示，不遮挡候选人弹窗 */}
       <div
         className={`fixed z-50 pointer-events-auto ${
-          current.position === 'left'
-            ? 'left-36 top-1/2 -translate-y-1/2'
-            : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
+          step >= 2 && step <= 3
+            ? 'left-1/2 -translate-x-1/2 top-4'
+            : step === 1
+              ? 'left-36 top-1/2 -translate-y-1/2'
+              : 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
         }`}
-        style={{ maxWidth: 420, width: 'calc(100vw - 48px)' }}
+        style={{ maxWidth: 380, width: 'calc(100vw - 48px)' }}
       >
         <div className="bg-stone-900 border border-amber-700/60 rounded-2xl shadow-2xl overflow-hidden">
           {/* 进度点 */}
@@ -120,6 +168,13 @@ export default function TutorialOverlay({ step, onNext, onSkip }) {
             <p className="text-sm text-stone-300 leading-relaxed whitespace-pre-line">
               {current.content}
             </p>
+
+            {/* 步骤2/3：提示当前状态 */}
+            {step === 2 && (
+              <div className="mt-3 text-xs text-amber-300/80 bg-amber-900/20 rounded-lg px-3 py-2">
+                💡 已勾选 {selectedCount} 人{selectedCount > 0 ? '，可以点下方弹窗的"带他们回家"了！' : ''}
+              </div>
+            )}
           </div>
 
           {/* 按钮 */}
@@ -130,17 +185,23 @@ export default function TutorialOverlay({ step, onNext, onSkip }) {
             >
               跳过教程
             </button>
-            <button
-              onClick={onNext}
-              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1 ${
-                current.isLast
-                  ? 'bg-green-700 hover:bg-green-600 text-green-100'
-                  : 'bg-amber-700 hover:bg-amber-600 text-amber-100'
-              }`}
-            >
-              {current.nextLabel}
-              {!current.isLast && <ChevronRight size={16} />}
-            </button>
+            {current.nextLabel ? (
+              <button
+                onClick={onNext}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1 ${
+                  current.isLast
+                    ? 'bg-green-700 hover:bg-green-600 text-green-100'
+                    : 'bg-amber-700 hover:bg-amber-600 text-amber-100'
+                }`}
+              >
+                {current.nextLabel}
+                {!current.isLast && <ChevronRight size={16} />}
+              </button>
+            ) : (
+              <div className="flex-1 py-2 rounded-lg text-xs text-stone-500 bg-stone-800/30 text-center">
+                {current.autoLabel}
+              </div>
+            )}
           </div>
         </div>
       </div>

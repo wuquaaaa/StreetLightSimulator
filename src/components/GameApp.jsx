@@ -14,7 +14,7 @@ import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
 import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin } from 'lucide-react';
-import TutorialOverlay from './TutorialOverlay';
+import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
@@ -143,22 +143,26 @@ export default function GameApp() {
     setBgmOn(isBGMPlaying());
   }, []);
 
-  // 新手教程：tutorialStep >= 0 时显示；或者 day<=1 且没有NPC（旧存档兼容）
-  const TUTORIAL_TOTAL_STEPS = 6; // 与 TutorialOverlay.jsx 中 TUTORIAL_STEPS 数量一致
-  const isFreshStart = game.tutorialStep >= 0;
-  const isOldFreshSave = (game.tutorialStep == null || game.tutorialStep === -1)
-    && game.day <= 1 && (!game.characters || game.characters.length === 0);
-  const showTutorial = isFreshStart || isOldFreshSave;
-  const tutorialStep = showTutorial ? (game.tutorialStep ?? 0) : -1;
+  // 新手教程：基于游戏状态动态计算当前步骤
+  const TUTORIAL_TOTAL_STEPS = 6;
+  const isTutorialActive = game.tutorialStep >= 0
+    || ((game.tutorialStep == null || game.tutorialStep === -1)
+      && game.day <= 1 && (!game.characters || game.characters.length === 0));
+
+  // 如果是旧存档兼容触发，初始化 tutorialStep
+  const tutorialDisplayStep = isTutorialActive
+    ? getTutorialStepFromGameState(game)
+    : null;
+
+  const showTutorial = isTutorialActive && tutorialDisplayStep !== null;
 
   const handleTutorialNext = useCallback(() => {
     const g = gameRef.current;
-    // 确保 tutorialStep 已初始化（旧存档兼容）
     if (g.tutorialStep == null || g.tutorialStep === -1) g.tutorialStep = 0;
     const next = g.tutorialStep + 1;
     g.tutorialStep = next >= TUTORIAL_TOTAL_STEPS ? -1 : next;
-    // 如果引导到"附近村庄"步骤，自动切换到该tab
-    if (g.tutorialStep === 2) {
+    // 步骤1 → 自动切换到附近村庄tab
+    if (g.tutorialStep === 1) {
       setActiveTab('village');
     }
     forceUpdate();
@@ -326,9 +330,10 @@ export default function GameApp() {
       {/* 新手教程 */}
       {showTutorial && !activeEvent && (
         <TutorialOverlay
-          step={tutorialStep}
+          step={tutorialDisplayStep}
           onNext={handleTutorialNext}
           onSkip={handleTutorialSkip}
+          game={game}
         />
       )}
     </div>

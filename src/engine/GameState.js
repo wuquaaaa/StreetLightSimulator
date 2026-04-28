@@ -446,6 +446,10 @@ export class GameState {
         this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
         this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
         this.addLog(msg);
+        // 新手教程：进入回程阶段
+        if (this.tutorialStep >= 0 && this.tutorialStep < 4) {
+          this.tutorialStep = 4;
+        }
         result = { success: true, message: msg };
         break;
       }
@@ -462,6 +466,10 @@ export class GameState {
         this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
         this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
         this.addLog('你没有找到合适的人选，赶车回去了。');
+        // 新手教程：进入回程阶段
+        if (this.tutorialStep >= 0 && this.tutorialStep < 4) {
+          this.tutorialStep = 4;
+        }
         result = { success: true, message: '回程中...' };
         break;
       }
@@ -697,6 +705,10 @@ export class GameState {
         // 亲自去：到达村庄，等待玩家选人
         this.recruitTask.phase = 'waiting_choice';
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
+        // 新手教程：推进到选人步骤
+        if (this.tutorialStep >= 0 && this.tutorialStep < 2) {
+          this.tutorialStep = 2;
+        }
       } else if (this.recruitTask.phase === 'returning') {
         // 亲自去：回程完成，批量创建 NPC
         const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
@@ -712,6 +724,10 @@ export class GameState {
         this.recruitTask = null;
         this.recruitSelectedCandidates = [];
         this.recruitHiredCount = 0;
+        // 新手教程：回程完成，推进到完成步骤
+        if (this.tutorialStep >= 0 && this.tutorialStep < 5) {
+          this.tutorialStep = 5;
+        }
       }
     } else {
       // 派人去
@@ -759,6 +775,10 @@ export class GameState {
         this.recruitTask = null;
         this.recruitSelectedCandidates = [];
         this.recruitHiredCount = 0;
+        // 新手教程：回程完成，推进到完成步骤
+        if (this.tutorialStep >= 0 && this.tutorialStep < 5) {
+          this.tutorialStep = 5;
+        }
       }
     }
   }

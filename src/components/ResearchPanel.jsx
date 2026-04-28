@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { getAllPosts } from '../data/posts';
-import { getAllGongfu } from '../data/gongfu';
+import { getAllPosts, getPostInfo } from '../data/posts';
+import { getAllGongfu, getGongfuInfo } from '../data/gongfu';
 import { TICKS_PER_DAY } from '../engine/constants';
 
 // ====== 岗位研究卡片 ======
@@ -26,7 +26,7 @@ function PostCard({ post, researched, canResearch, onResearch }) {
       </div>
       <div className="text-xs text-stone-400">{post.description}</div>
       {post.requires && post.requires.length > 0 && (
-        <div className="text-[10px] text-stone-500">前置：{post.requires.join(' → ')}</div>
+        <div className="text-[10px] text-stone-500">前置：{post.requires.map(id => getPostInfo(id)?.name || id).join(' → ')}</div>
       )}
       {post.energyCost < 1 && (
         <div className="text-[10px] text-cyan-400/70">可与其他非独占岗位兼任</div>
@@ -74,15 +74,16 @@ function GongfuCard({ gongfu, researched, canResearch, isResearching, researchPr
       </div>
       <div className="text-xs text-stone-400">{gongfu.description}</div>
       {gongfu.requires && gongfu.requires.length > 0 && (
-        <div className="text-[10px] text-stone-500">前置：{gongfu.requires.join('、')}</div>
+        <div className="text-[10px] text-stone-500">前置：{gongfu.requires.map(id => getGongfuInfo(id)?.name || id).join('、')}</div>
       )}
       <div className="text-[10px] text-amber-400/70">
-        效果：NPC负责的地块{gongfu.effect.type === 'farm_speed' ? `耕种速度 +${Math.round(gongfu.effect.value * 100)}%`
-          : gongfu.effect.type === 'fertilize_efficiency' ? `施肥效率 +${Math.round(gongfu.effect.value * 100)}%`
-          : gongfu.effect.type === 'pest_resistance' ? `虫害概率 -${Math.round(gongfu.effect.value * 100)}%`
-          : gongfu.effect.type === 'spirit_regen' ? `灵气回复 +${Math.round(gongfu.effect.value * 100)}%`
-          : gongfu.effect.type === 'winter_protection' ? '冬季冻害免疫'
-          : gongfu.effect.type === 'yield_bonus' ? `产量 +${Math.round(gongfu.effect.value * 100)}%`
+        效果：{gongfu.effect.type === 'farm_speed' ? `NPC负责的地块耕种速度 +${Math.round(gongfu.effect.value * 100)}%`
+          : gongfu.effect.type === 'fertilize_efficiency' ? `NPC负责的地块施肥效率 +${Math.round(gongfu.effect.value * 100)}%`
+          : gongfu.effect.type === 'pest_resistance' ? `NPC负责的地块虫害概率 -${Math.round(gongfu.effect.value * 100)}%`
+          : gongfu.effect.type === 'spirit_regen' ? `NPC负责的地块灵气回复 +${Math.round(gongfu.effect.value * 100)}%`
+          : gongfu.effect.type === 'winter_protection' ? 'NPC负责的地块冬季冻害免疫'
+          : gongfu.effect.type === 'yield_bonus' ? `NPC负责的地块产量 +${Math.round(gongfu.effect.value * 100)}%`
+          : gongfu.effect.type === 'spirit_plot_unlock' ? '解锁灵田升级功能（可将普通农田改造为灵田）'
           : gongfu.effect.value}
       </div>
 
