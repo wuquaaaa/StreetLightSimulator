@@ -205,6 +205,7 @@ export default function TutorialOverlay({ step, onNext, onSkip, game }) {
   const getPositionClass = () => {
     if (step === 6 || step === 10) return 'left-36 top-1/2 -translate-y-1/2'; // 左侧导航旁边
     if (step === 7) return 'left-1/2 -translate-x-1/2 top-4'; // 靠上，不遮挡候选人弹窗
+    if (step === 3) return 'left-4 bottom-4'; // 左下角，不遮挡种子选择弹窗
     return 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'; // 居中
   };
 
