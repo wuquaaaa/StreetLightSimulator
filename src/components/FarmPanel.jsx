@@ -328,6 +328,42 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, show
         )}
       </div>
 
+      {/* 水分预警条 */}
+      {isGrowing && plot.waterLevel < 30 && (
+        <div className="flex items-center gap-1.5 bg-red-950/40 border border-red-800/40 rounded px-2 py-1 mb-2 animate-pulse">
+          <Droplets size={11} className="text-red-400 shrink-0" />
+          <span className="text-[10px] text-red-300">严重缺水！作物即将枯萎</span>
+        </div>
+      )}
+      {isGrowing && plot.waterLevel >= 30 && plot.waterLevel < 60 && (
+        <div className="flex items-center gap-1.5 bg-yellow-950/30 border border-yellow-700/30 rounded px-2 py-1 mb-2">
+          <Droplets size={11} className="text-yellow-400 shrink-0" />
+          <span className="text-[10px] text-yellow-300">轻微干旱，产量开始下降</span>
+        </div>
+      )}
+
+      {/* 杂草预警条 */}
+      {isGrowing && plot.weedGrowth > 40 && plot.weedGrowth < 60 && (
+        <div className="flex items-center gap-1.5 bg-lime-950/30 border border-lime-700/30 rounded px-2 py-1 mb-2">
+          <Leaf size={11} className="text-lime-400 shrink-0" />
+          <span className="text-[10px] text-lime-300">杂草丛生，影响产量</span>
+        </div>
+      )}
+      {isGrowing && plot.weedGrowth >= 60 && (
+        <div className="flex items-center gap-1.5 bg-orange-950/40 border border-orange-700/40 rounded px-2 py-1 mb-2 animate-pulse">
+          <Leaf size={11} className="text-orange-400 shrink-0" />
+          <span className="text-[10px] text-orange-300">杂草泛滥！产量大幅下降</span>
+        </div>
+      )}
+
+      {/* 虫害预警条 */}
+      {plot.hasPest && (
+        <div className="flex items-center gap-1.5 bg-red-950/40 border border-red-800/40 rounded px-2 py-1 mb-2">
+          <Bug size={11} className="text-red-400 shrink-0" />
+          <span className="text-[10px] text-red-300">病虫害！还需 <b>{plot.pestSeverity}</b> 次除虫</span>
+        </div>
+      )}
+
       {/* 灵蛊警告条 */}
       {plot.hasSpiritBug && (
         <div className="flex items-center gap-1.5 bg-purple-900/30 border border-purple-700/40 rounded px-2 py-1 mb-2">
