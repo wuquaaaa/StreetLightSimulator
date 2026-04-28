@@ -145,11 +145,11 @@ function CharacterCard({ character, expanded, onToggle }) {
           </div>
 
           {/* 岗位和功法 */}
-          {(character.posts.length > 0 || character.learnedGongfu.length > 0) && (
-            <div className="mt-3 rounded-lg border border-stone-700/50 bg-stone-900/30 p-3">
-              <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-stone-700/50">
-                <span className="text-xs font-medium text-amber-400">📋 执事 · 功法</span>
-              </div>
+          <div className="mt-3 rounded-lg border border-stone-700/50 bg-stone-900/30 p-3">
+            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-stone-700/50">
+              <span className="text-xs font-medium text-amber-400">📋 执事 · 功法</span>
+            </div>
+            {(character.posts.length > 0 || character.learnedGongfu.length > 0) ? (
               <div className="flex flex-wrap gap-1.5">
                 {character.posts.map(postId => {
                   const post = getPostInfo(postId);
@@ -170,8 +170,10 @@ function CharacterCard({ character, expanded, onToggle }) {
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-[10px] text-stone-600 italic">尚无执事岗位与功法修习</p>
+            )}
+          </div>
         </div>
       )}
     </div>
