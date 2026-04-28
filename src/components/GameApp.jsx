@@ -143,13 +143,19 @@ export default function GameApp() {
     setBgmOn(isBGMPlaying());
   }, []);
 
-  // 新手教程
+  // 新手教程：tutorialStep >= 0 时显示；或者 day<=1 且没有NPC（旧存档兼容）
   const TUTORIAL_TOTAL_STEPS = 6; // 与 TutorialOverlay.jsx 中 TUTORIAL_STEPS 数量一致
-  const tutorialStep = game.tutorialStep ?? 0;
+  const isFreshStart = game.tutorialStep >= 0;
+  const isOldFreshSave = (game.tutorialStep == null || game.tutorialStep === -1)
+    && game.day <= 1 && (!game.characters || game.characters.length === 0);
+  const showTutorial = isFreshStart || isOldFreshSave;
+  const tutorialStep = showTutorial ? (game.tutorialStep ?? 0) : -1;
 
   const handleTutorialNext = useCallback(() => {
     const g = gameRef.current;
-    const next = (g.tutorialStep ?? 0) + 1;
+    // 确保 tutorialStep 已初始化（旧存档兼容）
+    if (g.tutorialStep == null || g.tutorialStep === -1) g.tutorialStep = 0;
+    const next = g.tutorialStep + 1;
     g.tutorialStep = next >= TUTORIAL_TOTAL_STEPS ? -1 : next;
     // 如果引导到"附近村庄"步骤，自动切换到该tab
     if (g.tutorialStep === 2) {
@@ -318,7 +324,7 @@ export default function GameApp() {
       )}
 
       {/* 新手教程 */}
-      {tutorialStep >= 0 && !activeEvent && (
+      {showTutorial && !activeEvent && (
         <TutorialOverlay
           step={tutorialStep}
           onNext={handleTutorialNext}
