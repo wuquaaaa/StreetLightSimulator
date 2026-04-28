@@ -10,6 +10,9 @@
 import { TRAIT_EFFECT_KEYS } from '../data/traits';
 import { POSTS, getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
+import {
+  WEED_THRESHOLD, NPC_WATER_THRESHOLD,
+} from './constants';
 
 // ====== 基础属性（发现层） ======
 export const BASE_ATTRIBUTES = {
@@ -340,6 +343,46 @@ export class Character {
    */
   getDisplaySpeed() {
     return this.getFarmWorkSpeed() / 2;
+  }
+
+  /**
+   * 获取此角色个性化的除草阈值
+   * 受 weedVigilance 特质和专注力影响
+   */
+  getWeedThreshold() {
+    let mod = 0;
+    for (const trait of this.traits) {
+      if (trait.effects?.weedVigilance) mod += trait.effects.weedVigilance;
+    }
+    const focus = this.baseAttributes.focus || 50;
+    mod += (50 - focus) * 0.2;
+    return Math.max(20, Math.min(80, Math.round(WEED_THRESHOLD + mod)));
+  }
+
+  /**
+   * 获取此角色个性化的浇水阈值
+   * 受 waterVigilance 特质和耕种经验影响
+   */
+  getWaterThreshold() {
+    let mod = 0;
+    for (const trait of this.traits) {
+      if (trait.effects?.waterVigilance) mod += trait.effects.waterVigilance;
+    }
+    const farming = this.knowledgeAttributes.farming || 0;
+    mod += Math.floor(farming / 10);
+    return Math.max(30, Math.min(80, Math.round(NPC_WATER_THRESHOLD + mod)));
+  }
+
+  /**
+   * 获取此角色每动作清除的虫害严重度
+   * 默认 1，受 pestEfficiency 影响
+   */
+  getPestClearAmount() {
+    let amount = 1;
+    for (const trait of this.traits) {
+      if (trait.effects?.pestEfficiency) amount += trait.effects.pestEfficiency;
+    }
+    return Math.max(1, Math.min(5, amount));
   }
 
   /**

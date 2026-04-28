@@ -445,11 +445,11 @@ export class FarmSystem {
     return { success: true, message: `施肥完成，肥力 ${Math.floor(plot.fertility)}` };
   }
 
-  removePest(plotId, character) {
+  removePest(plotId, character, clearAmount = 1) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasPest) return { success: false, message: '没有病虫害' };
-    plot.pestSeverity--;
-    character.gainKnowledge('farming', 0.3);
+    plot.pestSeverity = Math.max(0, plot.pestSeverity - clearAmount);
+    character.gainKnowledge('farming', 0.3 * clearAmount);
     if (plot.pestSeverity <= 0) {
       plot.hasPest = false;
       plot.pestSeverity = 0;
@@ -458,11 +458,11 @@ export class FarmSystem {
     return { success: true, message: `除虫中...还需${plot.pestSeverity}次`, cleared: false };
   }
 
-  removeSpiritBug(plotId, character) {
+  removeSpiritBug(plotId, character, clearAmount = 1) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasSpiritBug) return { success: false, message: '没有灵蛊' };
-    plot.spiritBugSeverity--;
-    character.gainKnowledge('farming', 0.5);
+    plot.spiritBugSeverity = Math.max(0, plot.spiritBugSeverity - clearAmount);
+    character.gainKnowledge('farming', 0.5 * clearAmount);
     if (plot.spiritBugSeverity <= 0) {
       plot.hasSpiritBug = false;
       plot.spiritBugSeverity = 0;

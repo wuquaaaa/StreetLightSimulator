@@ -46,7 +46,7 @@ export const YIELD_FERTILITY_HIGH_BONUS = 0.02; // 肥力>60每天最大增产
 export const YIELD_FERTILITY_LOW_PENALTY = 0.03;// 肥力<60每天最大减产
 
 // 病虫害
-export const PEST_SPAWN_CHANCE = 0.005;         // 每 tick 出现概率（模拟验证：5地块10天≈1.6次）
+export const PEST_SPAWN_CHANCE = 0.008;         // 每 tick 出现概率（压力本身是玩法：普通农民2块地刚好，差特质则吃力）
 export const PEST_SPREAD_BASE = 0.005;          // 传染基础概率
 export const PEST_INITIAL_SEVERITY_MIN = 3;     // 初始严重度最小值
 export const PEST_INITIAL_SEVERITY_RANGE = 5;   // 初始严重度随机范围
