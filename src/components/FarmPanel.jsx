@@ -200,7 +200,7 @@ function LabeledBar({ label, value, max, color, suffix, warning }) {
 // ======================================================
 // 农田卡片
 // ======================================================
-function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, showAura }) {
+function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, showAura, canSpiritUpgrade }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(plot.name);
 
@@ -236,7 +236,7 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, show
 
   // 灵田等级标签
   const spiritLevelName = SPIRIT_LEVEL_NAMES[plot.plotLevel];
-  const canUpgrade = !isGrowing && !isReady && plot.plotLevel < SPIRIT_PLOT_MAX_LEVEL;
+  const canUpgrade = canSpiritUpgrade && !isGrowing && !isReady && plot.plotLevel < SPIRIT_PLOT_MAX_LEVEL;
   const nextLevelName = plot.plotLevel < SPIRIT_PLOT_MAX_LEVEL
     ? SPIRIT_LEVEL_NAMES[plot.plotLevel + 1] : null;
 
@@ -279,15 +279,17 @@ function PlotCard({ plot, onAction, onPlant, onUpgrade, characters, player, show
         </div>
       </div>
 
-      {/* 管理者标签 */}
-      {assignedManagers.length > 0 && (
-        <div className="flex items-center gap-1 mb-2">
-          <span className="text-[10px] text-stone-500">👤 管理:</span>
-          {assignedManagers.map((name, idx) => (
+      {/* 管理者标签（始终显示） */}
+      <div className="flex items-center gap-1 mb-2">
+        <span className="text-[10px] text-stone-500">👤 管理:</span>
+        {assignedManagers.length > 0 ? (
+          assignedManagers.map((name, idx) => (
             <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-amber-900/30 text-amber-300 rounded">{name}</span>
-          ))}
-        </div>
-      )}
+          ))
+        ) : (
+          <span className="text-[10px] text-stone-600">无</span>
+        )}
+      </div>
 
       {/* 灵田等级效果预览（空地/翻地状态显示） */}
       {isSpirit && (isEmpty || isPlowed) && (
@@ -473,6 +475,9 @@ export default function FarmPanel({ game, onAction }) {
   // 灵气可见性：研究完成灵植术后才能看到灵气值
   const showAura = game.researchSystem?.isGongfuResearched('lingshi') ?? false;
 
+  // 聚灵术是否已研究（决定能否升级灵田）
+  const canSpiritUpgrade = game.researchSystem?.isGongfuResearched('spirit_focus') ?? false;
+
   // 统计灵田数量
   const spiritPlotCount = plots.filter(p => p.isSpiritPlot()).length;
 
@@ -498,7 +503,8 @@ export default function FarmPanel({ game, onAction }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {plots.map(plot => (
           <PlotCard key={plot.id} plot={plot} onAction={onAction} onPlant={handlePlant}
-            onUpgrade={setUpgradePlot} characters={characters} player={player} showAura={showAura} />
+            onUpgrade={setUpgradePlot} characters={characters} player={player} showAura={showAura}
+            canSpiritUpgrade={canSpiritUpgrade} />
         ))}
       </div>
 

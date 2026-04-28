@@ -476,7 +476,11 @@ export class GameState {
         }
         break;
       case 'upgrade_spirit_plot': {
-        // 灵田升级：检查材料 → 消耗 → 执行升级
+        // 灵田升级：检查聚灵术 → 检查材料 → 消耗 → 执行升级
+        if (!this.researchSystem.isGongfuResearched('spirit_focus')) {
+          result = { success: false, message: '需要先在司务堂研究「聚灵术」才能升级灵田' };
+          break;
+        }
         const targetLevel = params.level || 1;
         const costs = FarmSystem.getUpgradeCost(targetLevel);
         if (costs.length === 0) {

@@ -69,6 +69,21 @@ export const GONGFU = {
     },
     requires: ['tilling'],
   },
+  spirit_focus: {
+    id: 'spirit_focus',
+    name: '聚灵术',
+    icon: '🔮',
+    description: '凝聚天地灵气改造田地，将普通农田升级为灵田',
+    category: 'herbalism',
+    researchCost: 6,
+    learnTime: 8,
+    mentorBonus: 0.3,
+    effect: {
+      type: 'spirit_plot_unlock',
+      value: 1,                // 解锁灵田升级
+    },
+    requires: ['spirit_gardening'],
+  },
   greenhouse: {
     id: 'greenhouse',
     name: '四季棚',
