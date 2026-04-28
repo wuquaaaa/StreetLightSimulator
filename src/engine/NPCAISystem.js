@@ -9,8 +9,7 @@
  */
 
 import {
-  NPC_WATER_THRESHOLD, NPC_WEED_THRESHOLD, NPC_FERTILITY_THRESHOLD,
-  HR_EXP_PER_TICK,
+  NPC_FERTILITY_THRESHOLD, HR_EXP_PER_TICK,
 } from './constants';
 
 export class NPCAISystem {
@@ -49,7 +48,7 @@ export class NPCAISystem {
    * 农民 AI：按优先级执行一个农田操作
    */
   _executeFarmerAction(npc, plots, farm, warehouse, logFn) {
-    // 优先级：灵蛊 > 除虫 > 收获 > 浇水(低于50) > 除草(高于50) > 施肥(低于50) > 翻地 > 播种
+    // 优先级：灵蛊 > 除虫 > 收获 > 浇水(个性化阈值) > 除草(个性化阈值) > 施肥 > 翻地 > 播种
     for (const plot of plots) {
       if (plot.hasSpiritBug) {
         farm.removeSpiritBug(plot.id, npc);
@@ -58,7 +57,7 @@ export class NPCAISystem {
     }
     for (const plot of plots) {
       if (plot.hasPest) {
-        farm.removePest(plot.id, npc);
+        farm.removePest(plot.id, npc, npc.getPestClearAmount());
         return;
       }
     }
@@ -71,14 +70,16 @@ export class NPCAISystem {
         return;
       }
     }
+    const waterThreshold = npc.getWaterThreshold();
     for (const plot of plots) {
-      if (plot.waterLevel < NPC_WATER_THRESHOLD) {
+      if (plot.waterLevel < waterThreshold) {
         farm.water(plot.id, npc);
         return;
       }
     }
+    const weedThreshold = npc.getWeedThreshold();
     for (const plot of plots) {
-      if (plot.weedGrowth > NPC_WEED_THRESHOLD) {
+      if (plot.weedGrowth > weedThreshold) {
         farm.removeWeeds(plot.id, npc);
         return;
       }

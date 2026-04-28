@@ -110,8 +110,8 @@ export const GENERAL_TRAITS = {
     name: '勤劳',
     icon: '💪',
     category: 'general',
-    description: '干活不知疲倦，效率更高',
-    effects: { workSpeedBonus: 0.15 },
+    description: '干活不知疲倦，效率更高，也更早发现杂草',
+    effects: { workSpeedBonus: 0.15, weedVigilance: -10 },
     rarity: 'common',
   },
   lazy: {
@@ -119,8 +119,8 @@ export const GENERAL_TRAITS = {
     name: '懒惰',
     icon: '😴',
     category: 'general',
-    description: '能偷懒就偷懒，干活比别人慢',
-    effects: { workSpeedBonus: -0.2 },
+    description: '能偷懒就偷懒，干活慢，杂草长满了才发现',
+    effects: { workSpeedBonus: -0.2, weedVigilance: 15, waterVigilance: -10 },
     rarity: 'common',
   },
   clever: {
@@ -128,8 +128,8 @@ export const GENERAL_TRAITS = {
     name: '聪慧过人',
     icon: '🧠',
     category: 'general',
-    description: '领悟力极强，学习速度快',
-    effects: { learningBonus: 15 },
+    description: '领悟力极强，学到快，浇水时机精准',
+    effects: { learningBonus: 15, waterVigilance: 5 },
     rarity: 'uncommon',
   },
   clumsy: {
@@ -137,8 +137,8 @@ export const GENERAL_TRAITS = {
     name: '笨手笨脚',
     icon: '🤕',
     category: 'general',
-    description: '干活总是出差错，品质难以保证',
-    effects: { focusBonus: -10, workSpeedBonus: -0.15 },
+    description: '干活总出差错，效率低，除虫也费劲',
+    effects: { focusBonus: -10, workSpeedBonus: -0.15, pestEfficiency: -1 },
     rarity: 'common',
   },
   stubborn: {
@@ -191,8 +191,8 @@ export const GENERAL_TRAITS = {
     name: '铁骨铮铮',
     icon: '🏋️',
     category: 'general',
-    description: '体格强健，几乎不生病',
-    effects: { constitutionBonus: 20 },
+    description: '体格强健，几乎不生病，除虫有力',
+    effects: { constitutionBonus: 20, pestEfficiency: 1 },
     rarity: 'rare',
   },
   herb_sense: {
@@ -253,6 +253,9 @@ export const TRAIT_EFFECT_KEYS = {
   workSpeedBonus:      { name: '工作效率修正', unit: '%' },
   foodConsumptionBonus:{ name: '食物消耗修正', unit: '%' },
   herbQualityBonus:    { name: '草药品质修正', unit: '%' },
+  weedVigilance:       { name: '杂草感知', unit: '负值=更早除草' },
+  waterVigilance:      { name: '浇水勤快度', unit: '正值=更早浇水' },
+  pestEfficiency:      { name: '除虫效率', unit: '每动作清除更多严重度' },
 };
 
 /**
