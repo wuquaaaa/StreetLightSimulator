@@ -26,9 +26,8 @@ import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
 import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
 
 // 纯委托映射：action → { target, method }
-// 15 个不需要 GameState 介入的 case，统一处理 result.message 日志
+// 不需要 GameState 介入的 case，统一处理 result.message 日志
 const FARM_DELEGATES = {
-  plow:          (g, p) => g.farm.plow(p.plotId, g.player),
   plant:         (g, p) => g.farm.plant(p.plotId, p.cropId, g.player, g.warehouse),
   water:         (g, p) => g.farm.water(p.plotId, g.player),
   remove_pest:   (g, p) => g.farm.removePest(p.plotId, g.player),
@@ -36,7 +35,6 @@ const FARM_DELEGATES = {
   fertilize:         (g, p) => g.farm.fertilize(p.plotId, g.player),
   remove_spirit_bug: (g, p) => g.farm.removeSpiritBug(p.plotId, g.player),
   rename_plot:   (g, p) => g.farm.renamePlot(p.plotId, p.newName),
-  expand_farm:   (g)    => g.farm.expandFarm(),
   remove_plot:   (g, p) => g.farm.removePlot(p.plotId),
   assign_plot:   (g, p) => g.farm.assignPlot(p.plotId, p.characterId),
   unassign_plot: (g, p) => g.farm.unassignPlot(p.plotId, p.characterId),
@@ -46,6 +44,7 @@ const WAREHOUSE_DELEGATES = {
   upgrade_common:    (g) => g.warehouse.upgradeCommon(),
   upgrade_warehouse: (g, p) => g.warehouse.upgradeWarehouse(p.category),
 };
+// expand_farm 和 plow 不再纯委托，移到 switch 中处理
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -498,6 +497,39 @@ export class GameState {
           result = { success: false, message: '无效的角色参数' };
         }
         break;
+      case 'plow': {
+        if (this.isPlayerAway) {
+          result = { success: false, message: '你正在去村庄的路上，无法翻地' };
+          break;
+        }
+        result = this.farm.plow(params.plotId, this.player);
+        if (result.success && result.seedFound) {
+          // 翻地时发现了随机种子，放入仓库
+          const seed = result.seedFound;
+          const addResult = this.warehouse.addItem('seed', seed.seedId, seed.seedName, seed.amount);
+          let msg = `翻地完成！意外翻出了${seed.amount}颗${seed.seedName}！`;
+          if (addResult.overflow > 0) {
+            msg += `（仓库满了！${addResult.overflow}颗${seed.seedName}丢失）`;
+          }
+          result.message = msg;
+        }
+        break;
+      }
+
+      case 'expand_farm': {
+        // 手动开垦也走耗时队列（玩家开垦）
+        const existingPlayerExpand = this.farm.expandQueue.find(q => q.characterId === this.player.id);
+        if (existingPlayerExpand) {
+          result = { success: false, message: '你已在开垦中' };
+          break;
+        }
+        result = this.farm.startExpand(this.player.id);
+        if (result.success) {
+          this.addLog('你开始开垦新农田……');
+        }
+        break;
+      }
+
       case 'upgrade_spirit_plot': {
         // 灵田升级：检查聚灵术 → 检查材料 → 消耗 → 执行升级
         if (!this.researchSystem.isGongfuResearched('spirit_focus')) {

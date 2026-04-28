@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { BASE_ATTRIBUTES, KNOWLEDGE_ATTRIBUTES, getMoodInfo } from '../engine/Character';
 import { getRoleInfo } from '../data/roles';
+import { getPostInfo } from '../data/posts';
+import { getGongfuInfo } from '../data/gongfu';
 import { User, Lock, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
 
 function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) {
@@ -141,6 +143,35 @@ function CharacterCard({ character, expanded, onToggle }) {
               )}
             </div>
           </div>
+
+          {/* 岗位和功法 */}
+          {(character.posts.length > 0 || character.learnedGongfu.length > 0) && (
+            <div className="mt-3 rounded-lg border border-stone-700/50 bg-stone-900/30 p-3">
+              <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-stone-700/50">
+                <span className="text-xs font-medium text-amber-400">📋 执事 · 功法</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {character.posts.map(postId => {
+                  const post = getPostInfo(postId);
+                  if (!post) return null;
+                  return (
+                    <span key={postId} className="text-[10px] px-1.5 py-0.5 bg-amber-900/40 text-amber-300 rounded border border-amber-700/30">
+                      {post.icon} {post.name}
+                    </span>
+                  );
+                })}
+                {character.learnedGongfu.map(gongfuId => {
+                  const gf = getGongfuInfo(gongfuId);
+                  if (!gf) return null;
+                  return (
+                    <span key={gongfuId} className="text-[10px] px-1.5 py-0.5 bg-blue-900/40 text-blue-300 rounded border border-blue-700/30">
+                      {gf.icon} {gf.name}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

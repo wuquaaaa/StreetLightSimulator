@@ -152,6 +152,7 @@ export class FarmPlot {
     // ===== 灵田升级 =====
     this.plotType = PLOT_TYPE_NORMAL;   // 'normal' | 'spirit'
     this.plotLevel = 0;                  // 0=普通, 1-3=灵田等级
+    this.hasEverHarvested = false;       // 是否至少收获过一次（限制新田升级灵田）
   }
 
   getCropDef() {
@@ -218,6 +219,7 @@ export class FarmPlot {
       // 灵田升级字段
       plotType: this.plotType,
       plotLevel: this.plotLevel,
+      hasEverHarvested: this.hasEverHarvested,
     };
   }
 
@@ -237,6 +239,7 @@ export class FarmPlot {
     // 兼容旧存档：灵田升级字段
     if (plot.plotType === undefined) plot.plotType = PLOT_TYPE_NORMAL;
     if (plot.plotLevel === undefined) plot.plotLevel = 0;
+    if (plot.hasEverHarvested === undefined) plot.hasEverHarvested = true; // 旧存档默认视为已收获
     return plot;
   }
 }
@@ -284,6 +287,11 @@ export class FarmSystem {
     // 已成熟的需要先收获
     if (plot.state === FIELD_STATE.READY) {
       return { success: false, message: '请先收获作物再改造' };
+    }
+
+    // 新开垦的田需要至少收获过一次才能升级
+    if (!plot.hasEverHarvested) {
+      return { success: false, message: '新开的田需要先种一轮作物才能改造' };
     }
 
     // 普通田 → 灵田1级，灵田1级 → 2级，以此类推
@@ -366,7 +374,31 @@ export class FarmSystem {
     plot._spiritAuraAccum = 0;
     plot._spiritAuraTickCount = 0;
     character.gainKnowledge('farming', 1);
-    return { success: true, message: '翻地完成' };
+
+    // 翻地有概率发现随机种子
+    const result = { success: true, message: '翻地完成' };
+
+    // 灵草种子概率：基础5%，灵田额外+5%/级
+    const herbChance = 0.05 + (plot.isSpiritPlot() ? plot.plotLevel * 0.05 : 0);
+    if (Math.random() < herbChance) {
+      const herbs = CROPS.filter(c => c.isHerb);
+      // 越稀有的概率越低
+      const weighted = herbs.flatMap(c => Array(Math.max(1, 6 - (c.rarity || 1))).fill(c));
+      const seed = weighted[Math.floor(Math.random() * weighted.length)];
+      result.seedFound = { seedId: seed.seedId, seedName: seed.seedName, amount: 1 };
+      return result;
+    }
+
+    // 食物种子概率：15%
+    if (Math.random() < 0.15) {
+      const foodCrops = CROPS.filter(c => !c.isHerb);
+      if (foodCrops.length > 0) {
+        const seed = foodCrops[Math.floor(Math.random() * foodCrops.length)];
+        result.seedFound = { seedId: seed.seedId, seedName: seed.seedName, amount: 1 };
+      }
+    }
+
+    return result;
   }
 
   plant(plotId, cropId, character, warehouse) {
@@ -495,6 +527,7 @@ export class FarmSystem {
     plot.hadSpiritBug = false;
     plot._spiritAuraAccum = 0;
     plot._spiritAuraTickCount = 0;
+    plot.hasEverHarvested = true;  // 标记已收获过
 
     character.gainKnowledge('farming', crop.isHerb ? 5 : 3);
 
