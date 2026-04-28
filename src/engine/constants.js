@@ -46,7 +46,7 @@ export const YIELD_FERTILITY_HIGH_BONUS = 0.02; // 肥力>60每天最大增产
 export const YIELD_FERTILITY_LOW_PENALTY = 0.03;// 肥力<60每天最大减产
 
 // 病虫害
-export const PEST_SPAWN_CHANCE = 0.008;         // 每 tick 出现概率
+export const PEST_SPAWN_CHANCE = 0.005;         // 每 tick 出现概率（模拟验证：5地块10天≈1.6次）
 export const PEST_SPREAD_BASE = 0.005;          // 传染基础概率
 export const PEST_INITIAL_SEVERITY_MIN = 3;     // 初始严重度最小值
 export const PEST_INITIAL_SEVERITY_RANGE = 5;   // 初始严重度随机范围
@@ -60,8 +60,8 @@ export const WEED_GROWTH_BASE = 2;             // 杂草基础生长速率
 export const WEED_REMOVE_AMOUNT = 20;          // 每次除草减少
 
 // NPC 自动劳作阈值
-export const NPC_WATER_THRESHOLD = 50;         // NPC 自动浇水的水分阈值
-export const NPC_WEED_THRESHOLD = 50;          // NPC 自动除草的杂草阈值
+export const NPC_WATER_THRESHOLD = 55;         // NPC 自动浇水的水分阈值（略低于减产阈值60，留下预警窗口）
+export const NPC_WEED_THRESHOLD = 65;          // NPC 自动除草的杂草阈值（高于玩家感知阈值40，留下操作窗口）
 export const NPC_FERTILITY_THRESHOLD = 50;     // NPC 自动施肥的肥力阈值
 
 // 冬天冻害
