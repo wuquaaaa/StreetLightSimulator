@@ -111,7 +111,7 @@ export const GENERAL_TRAITS = {
     icon: '💪',
     category: 'general',
     description: '干活不知疲倦，效率更高',
-    effects: { workSpeedBonus: 0.1 },
+    effects: { workSpeedBonus: 0.15 },
     rarity: 'common',
   },
   lazy: {
@@ -120,7 +120,7 @@ export const GENERAL_TRAITS = {
     icon: '😴',
     category: 'general',
     description: '能偷懒就偷懒，干活比别人慢',
-    effects: { workSpeedBonus: -0.15 },
+    effects: { workSpeedBonus: -0.2 },
     rarity: 'common',
   },
   clever: {
@@ -138,7 +138,7 @@ export const GENERAL_TRAITS = {
     icon: '🤕',
     category: 'general',
     description: '干活总是出差错，品质难以保证',
-    effects: { focusBonus: -10, workSpeedBonus: -0.1 },
+    effects: { focusBonus: -10, workSpeedBonus: -0.15 },
     rarity: 'common',
   },
   stubborn: {

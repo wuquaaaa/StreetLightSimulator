@@ -9,6 +9,7 @@
 
 import { TRAIT_EFFECT_KEYS } from '../data/traits';
 import { POSTS, getPostInfo } from '../data/posts';
+import { getGongfuInfo } from '../data/gongfu';
 
 // ====== 基础属性（发现层） ======
 export const BASE_ATTRIBUTES = {
@@ -313,7 +314,14 @@ export class Character {
    */
   getFarmWorkSpeed() {
     const farming = this.knowledgeAttributes.farming || 0;
-    let speed = 2 * (1 + farming / 100);
+    let speed = 1.5 * (1 + farming / 100);
+    // 功法修正（farm_speed 类型）
+    for (const gongfuId of this.learnedGongfu) {
+      const gf = getGongfuInfo(gongfuId);
+      if (gf && gf.effect?.type === 'farm_speed') {
+        speed *= (1 + gf.effect.value);
+      }
+    }
     // 特质修正
     for (const trait of this.traits) {
       if (trait.effects?.workSpeedBonus) {
