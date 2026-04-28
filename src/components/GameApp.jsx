@@ -14,6 +14,7 @@ import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
 import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin } from 'lucide-react';
+import TutorialOverlay from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
 const AUTOSAVE_INTERVAL = 5 * 60 * 1000;
@@ -141,6 +142,26 @@ export default function GameApp() {
     toggleBGM();
     setBgmOn(isBGMPlaying());
   }, []);
+
+  // 新手教程
+  const TUTORIAL_TOTAL_STEPS = 6; // 与 TutorialOverlay.jsx 中 TUTORIAL_STEPS 数量一致
+  const tutorialStep = game.tutorialStep ?? 0;
+
+  const handleTutorialNext = useCallback(() => {
+    const g = gameRef.current;
+    const next = (g.tutorialStep ?? 0) + 1;
+    g.tutorialStep = next >= TUTORIAL_TOTAL_STEPS ? -1 : next;
+    // 如果引导到"附近村庄"步骤，自动切换到该tab
+    if (g.tutorialStep === 2) {
+      setActiveTab('village');
+    }
+    forceUpdate();
+  }, [forceUpdate]);
+
+  const handleTutorialSkip = useCallback(() => {
+    gameRef.current.tutorialStep = -1;
+    forceUpdate();
+  }, [forceUpdate]);
 
   // 计算农田tab的角色子页签：按玩家实际身份决定
   const farmRoles = game.player.roles.filter(r => r === 'farmer' || r === 'farmer_leader');
@@ -293,6 +314,15 @@ export default function GameApp() {
         <EventPopup
           eventType={activeEvent}
           onAction={handleEventAction}
+        />
+      )}
+
+      {/* 新手教程 */}
+      {tutorialStep >= 0 && !activeEvent && (
+        <TutorialOverlay
+          step={tutorialStep}
+          onNext={handleTutorialNext}
+          onSkip={handleTutorialSkip}
         />
       )}
     </div>

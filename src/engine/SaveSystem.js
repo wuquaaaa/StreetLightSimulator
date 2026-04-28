@@ -41,6 +41,8 @@ export const SaveSystem = {
       recruitCandidatePool: game.recruitCandidatePool || [],
       recruitHiredCount: game.recruitHiredCount || 0,
       currentVehicle: game.currentVehicle || 'donkey_cart',
+      // 新手教程
+      tutorialStep: game.tutorialStep ?? 0,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
     };
@@ -100,6 +102,8 @@ export const SaveSystem = {
     game.recruitCandidatePool = data.recruitCandidatePool || [];
     game.recruitHiredCount = data.recruitHiredCount || 0;
     game.currentVehicle = data.currentVehicle || 'donkey_cart';
+    // 新手教程（旧存档默认 -1，视为已完成）
+    game.tutorialStep = data.tutorialStep != null ? data.tutorialStep : -1;
 
     // 研究系统
     if (data.researchSystem) {

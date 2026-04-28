@@ -83,6 +83,9 @@ export class GameState {
     this.recruitHiredCount = 0;
     this.currentVehicle = 'donkey_cart';
 
+    // 新手教程步骤：-1 = 已完成/跳过，0~N = 当前步骤
+    this.tutorialStep = 0;
+
     this.log = [
       '你来到了一片陌生的土地。',
       '这里有几块空闲的农田和一间公共仓库。',
