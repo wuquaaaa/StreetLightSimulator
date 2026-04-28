@@ -5,6 +5,7 @@
  */
 
 import { ResearchSystem } from './ResearchSystem';
+import { GatherSystem } from './GatherSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -16,7 +17,7 @@ export const SaveSystem = {
    */
   serialize(game) {
     const data = {
-      version: 3,
+      version: 4,
       timestamp: Date.now(),
       day: game.day,
       tickCount: game.tickCount,
@@ -51,6 +52,8 @@ export const SaveSystem = {
       hallBuildProgress: game.hallBuildProgress || null,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
+      // 后山采集系统
+      gatherSystem: game.gatherSystem.toJSON(),
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -139,6 +142,29 @@ export const SaveSystem = {
       game.researchSystem = ResearchSystem.fromJSON(data.researchSystem);
     }
 
+    // 后山采集系统
+    if (data.gatherSystem) {
+      game.gatherSystem = GatherSystem.fromJSON(data.gatherSystem);
+    }
+    // 兼容旧存档：如果已建造 mountain_trail 但没有 gatherSystem 数据，解锁采集
+    if (game.buildings.includes('mountain_trail') && !game.gatherSystem.unlocked) {
+      game.gatherSystem.unlocked = true;
+    }
+
+    // v4 迁移：统一 itemId 'wood' → 'lumber'
+    if (data.version < 4) {
+      const migrateItems = (items) => {
+        if (items && items['wood']) {
+          items['lumber'] = items['wood'];
+          delete items['wood'];
+        }
+      };
+      migrateItems(game.warehouse.common.items);
+      if (game.warehouse.storage['material']?.items) {
+        migrateItems(game.warehouse.storage['material'].items);
+      }
+    }
+
     game.addLog('存档已加载');
     return game;
   },
@@ -148,7 +174,7 @@ export const SaveSystem = {
       const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${slot}`);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return null;
+      if (!data || ![1, 2, 3, 4].includes(data.version)) return null;
       return SaveSystem.restoreFromData(data, GameState);
     } catch {
       return null;

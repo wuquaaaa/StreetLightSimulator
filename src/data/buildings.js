@@ -18,13 +18,30 @@ import { TICKS_PER_DAY } from '../engine/constants';
 
 export const BUILDING_DEFS = [
   {
+    id: 'mountain_trail',
+    name: '后山小径',
+    icon: '🛤️',
+    description: '开辟一条通往后山的林间小径，解锁后山采集点，派NPC采集木材和石材。',
+    category: 'production',
+    costs: [
+      { category: 'food', itemId: 'wheat', name: '小麦', amount: 15 },
+    ],
+    buildDays: 2,
+    unique: true,
+    requires: (game) => !game.buildings.includes('mountain_trail'),
+    onBuilt: (game) => {
+      game.gatherSystem.unlock();
+    },
+    story: '你决定在后山开辟一条小径。山林间有取之不尽的木材和石材，或许能派些人去采集。',
+  },
+  {
     id: 'large_warehouse',
     name: '大仓库',
     icon: '🏗️',
     description: '扩容公共仓库容量，让你能囤积更多物资。',
     category: 'storage',
     costs: [
-      { category: 'material', itemId: 'wood', name: '木材', amount: 15 },
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 15 },
       { category: 'material', itemId: 'stone', name: '石材', amount: 8 },
     ],
     buildDays: 2,
@@ -42,7 +59,7 @@ export const BUILDING_DEFS = [
     description: '统筹事务的建筑。建好后获得「司录」身份，可以研究岗位和功法。',
     category: 'research',
     costs: [
-      { category: 'material', itemId: 'wood', name: '木材', amount: 30 },
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 30 },
       { category: 'material', itemId: 'stone', name: '石材', amount: 15 },
     ],
     buildDays: 3,

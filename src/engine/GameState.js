@@ -11,6 +11,7 @@ import { NPCAISystem } from './NPCAISystem';
 import { FoodSystem } from './FoodSystem';
 import { EventSystem } from './EventSystem';
 import { ResearchSystem } from './ResearchSystem';
+import { GatherSystem } from './GatherSystem';
 import { NPC_NAMES, generateName, generateAppearance } from '../data/names';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
@@ -44,6 +45,10 @@ const WAREHOUSE_DELEGATES = {
   upgrade_common:    (g) => g.warehouse.upgradeCommon(),
   upgrade_warehouse: (g, p) => g.warehouse.upgradeWarehouse(p.category),
 };
+const GATHER_DELEGATES = {
+  assign_gather_node:   (g, p) => g.gatherSystem.assignNode(p.nodeId, p.characterId),
+  unassign_gather_node: (g, p) => g.gatherSystem.unassignNode(p.nodeId, p.characterId),
+};
 // expand_farm 和 plow 不再纯委托，移到 switch 中处理
 
 export class GameState {
@@ -63,6 +68,7 @@ export class GameState {
     this.foodSystem = new FoodSystem();
     this.eventSystem = new EventSystem();
     this.researchSystem = new ResearchSystem();
+    this.gatherSystem = new GatherSystem();
 
     // 事件系统（委托给 EventSystem，保留引用兼容旧存档）
     this.triggeredEvents = this.eventSystem.triggeredEvents;
@@ -260,6 +266,12 @@ export class GameState {
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
+    // 后山采集系统 tick（每天产出材料）
+    if (this.gatherSystem.unlocked) {
+      const allChars = [this.player, ...this.characters];
+      this.gatherSystem.tick(isNewDay, allChars, this.warehouse, (msg) => this.addLog(msg));
+    }
+
     // 司务堂建造进度
     if (this.hallBuildProgress) {
       this.hallBuildProgress.progress++;
@@ -328,6 +340,14 @@ export class GameState {
       } else {
         result = farmFn(this, params);
       }
+      if (result && result.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 纯委托：后山采集操作
+    const gatherFn = GATHER_DELEGATES[action];
+    if (gatherFn) {
+      result = gatherFn(this, params);
       if (result && result.message) this.addLog(result.message);
       return result;
     }
@@ -671,7 +691,7 @@ export class GameState {
         }
         // 建造材料：木材30 + 石材15
         const HALL_COSTS = [
-          { category: 'material', itemId: 'wood', name: '木材', amount: 30 },
+          { category: 'material', itemId: 'lumber', name: '木材', amount: 30 },
           { category: 'material', itemId: 'stone', name: '石材', amount: 15 },
         ];
         const hallLacks = [];

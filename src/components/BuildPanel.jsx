@@ -133,6 +133,7 @@ export default function BuildPanel({ game, onAction }) {
 
   // 分类展示
   const categories = [
+    { key: 'production', label: '生产', color: 'text-green-400' },
     { key: 'storage', label: '仓储', color: 'text-amber-400' },
     { key: 'research', label: '研究', color: 'text-cyan-400' },
   ];

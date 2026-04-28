@@ -6,6 +6,7 @@ import FarmPanel from './FarmPanel';
 import FarmLeaderPanel from './FarmLeaderPanel';
 import RecruitPanel from './RecruitPanel';
 import BuildPanel from './BuildPanel';
+import GatherPanel from './GatherPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
@@ -14,7 +15,7 @@ import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain } from 'lucide-react';
 import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
@@ -197,6 +198,9 @@ export default function GameApp() {
     { id: 'farm', label: '农田', icon: Wheat },
     { id: 'village', label: '附近村庄', icon: MapPin },
     { id: 'building', label: '建筑', icon: Hammer },
+    ...(game.gatherSystem?.unlocked
+      ? [{ id: 'gather', label: '后山', icon: Mountain }]
+      : []),
     { id: 'warehouse', label: '仓库', icon: Package },
     ...(game.hallBuilt ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
     { id: 'character', label: '角色', icon: User },
@@ -225,7 +229,9 @@ export default function GameApp() {
                 onClick={() => { sfxTab(); setActiveTab(tab.id); }}
                 className={`flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
                   activeTab === tab.id
-                    ? (tab.id === 'research' ? 'bg-cyan-900/20 text-cyan-400 border-r-2 border-cyan-500' : 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500')
+                    ? (tab.id === 'research' ? 'bg-cyan-900/20 text-cyan-400 border-r-2 border-cyan-500'
+                      : tab.id === 'gather' ? 'bg-green-900/20 text-green-400 border-r-2 border-green-500'
+                      : 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500')
                     : 'text-stone-400 hover:bg-stone-800 hover:text-stone-200'
                 }`}
               >
@@ -310,6 +316,7 @@ export default function GameApp() {
             {activeTab === 'farm' && renderFarmContent()}
             {activeTab === 'village' && <RecruitPanel game={game} onAction={handleAction} />}
             {activeTab === 'building' && <BuildPanel game={game} onAction={handleAction} />}
+            {activeTab === 'gather' && <GatherPanel game={game} onAction={handleAction} />}
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'research' && <ResearchPanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
