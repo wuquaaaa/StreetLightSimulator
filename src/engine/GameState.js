@@ -86,6 +86,10 @@ export class GameState {
     // 新手教程步骤：-1 = 已完成/跳过，0~N = 当前步骤
     this.tutorialStep = 0;
 
+    // 司务堂建造状态
+    this.hallBuilt = false;           // 司务堂是否已建造
+    this.hallBuildProgress = null;    // 建造进度 { progress: number, totalTicks: number }
+
     this.log = [
       '你来到了一片陌生的土地。',
       '这里有几块空闲的农田和一间公共仓库。',
@@ -243,6 +247,21 @@ export class GameState {
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
+    // 司务堂建造进度
+    if (this.hallBuildProgress) {
+      this.hallBuildProgress.progress++;
+      if (this.hallBuildProgress.progress >= this.hallBuildProgress.totalTicks) {
+        this.hallBuildProgress = null;
+        this.hallBuilt = true;
+        this.researchSystem.unlock();
+        // 给予玩家司录身份
+        if (!this.player.roles.includes('silu')) {
+          this.player.roles.push('silu');
+        }
+        this.addLog('司务堂落成！你获得了「司录」身份，可以参悟岗位和功法了。');
+      }
+    }
+
     // 司务堂（研究系统）tick
     if (this.researchSystem.unlocked) {
       const researchMsgs = this.researchSystem.tick(this.characters, this.farm);
@@ -310,10 +329,6 @@ export class GameState {
       }
       case 'recruit_accept_with_promote': {
         const { name } = this._createNPCFarmer();
-        this.triggeredEvents['recruit'] = 'accepted';
-        this.addLog(`${name}加入了你的队伍！他是一个农民。`);
-        this.player.roles = ['farmer_leader', 'farmer'];
-        this.addLog('你现在的身份是：农民队长、农民');
         this._tryUnlockResearch();
         result = { success: true, message: `${name}加入了，你成为了农民队长`, npcName: name };
         break;
@@ -513,6 +528,44 @@ export class GameState {
         }
         // 执行升级
         result = this.farm.upgradeToSpirit(params.plotId, targetLevel);
+        break;
+      }
+
+      // ====== 建造司务堂 ======
+      case 'build_hall': {
+        if (this.hallBuilt) {
+          result = { success: false, message: '司务堂已经建好了' };
+          break;
+        }
+        if (this.hallBuildProgress) {
+          result = { success: false, message: '司务堂正在建造中...' };
+          break;
+        }
+        // 建造材料：木材30 + 石材15
+        const HALL_COSTS = [
+          { category: 'material', itemId: 'wood', name: '木材', amount: 30 },
+          { category: 'material', itemId: 'stone', name: '石材', amount: 15 },
+        ];
+        const hallLacks = [];
+        for (const cost of HALL_COSTS) {
+          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
+          if (have < cost.amount) {
+            hallLacks.push(`${cost.name}(${have}/${cost.amount})`);
+          }
+        }
+        if (hallLacks.length > 0) {
+          result = { success: false, message: `材料不足：${hallLacks.join('、')}` };
+          break;
+        }
+        // 消耗材料
+        for (const cost of HALL_COSTS) {
+          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
+        }
+        // 开始建造（3天）
+        const hallBuildTicks = 3 * TICKS_PER_DAY;
+        this.hallBuildProgress = { progress: 0, totalTicks: hallBuildTicks };
+        this.addLog('你开始建造司务堂……预计需要 3 天。');
+        result = { success: true, message: '开始建造司务堂' };
         break;
       }
 
@@ -784,14 +837,13 @@ export class GameState {
   }
 
   /**
-   * 尝试解锁研究系统（首次招募成功时调用）
+   * 首次招募成功后处理（仅标记事件，不再自动解锁研究系统）
    */
   _tryUnlockResearch() {
-    if (this.researchSystem.unlocked) return;
-    this.researchSystem.unlock();
+    if (this.triggeredEvents['recruit'] === 'accepted') return;
     this.player.roles = ['farmer_leader', 'farmer'];
     this.addLog('你意识到只靠种地养不活这么多人。你开始思考分工与规矩……');
-    this.addLog('司务堂开启！你可以任命知客管理人事，研究新的岗位和功法。');
+    this.addLog('也许该建造一间司务堂来统筹事务……');
     this.triggeredEvents['recruit'] = 'accepted';
   }
 

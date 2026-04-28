@@ -4,13 +4,22 @@ import { getAllGongfu, getGongfuInfo } from '../data/gongfu';
 import { TICKS_PER_DAY } from '../engine/constants';
 
 // ====== 岗位研究卡片 ======
-function PostCard({ post, researched, canResearch, onResearch }) {
-  const statusColor = researched ? 'border-green-600/50 bg-green-950/20' : canResearch ? 'border-amber-600/50 bg-amber-950/10' : 'border-stone-700/50 bg-stone-800/20';
+function PostCard({ post, researched, canResearch, isResearching, researchProgress, onResearch }) {
+  const statusColor = researched ? 'border-green-600/50 bg-green-950/20'
+    : isResearching ? 'border-blue-600/50 bg-blue-950/20'
+    : canResearch ? 'border-amber-600/50 bg-amber-950/10'
+    : 'border-stone-700/50 bg-stone-800/20';
   const statusBadge = researched
     ? <span className="text-[10px] px-2 py-0.5 rounded bg-green-800/50 text-green-300">已参悟</span>
-    : canResearch
-      ? <span className="text-[10px] px-2 py-0.5 rounded bg-amber-800/50 text-amber-300">可参悟</span>
-      : <span className="text-[10px] px-2 py-0.5 rounded bg-stone-700/50 text-stone-500">未解锁</span>;
+    : isResearching
+      ? <span className="text-[10px] px-2 py-0.5 rounded bg-blue-800/50 text-blue-300">参悟中</span>
+      : canResearch
+        ? <span className="text-[10px] px-2 py-0.5 rounded bg-amber-800/50 text-amber-300">可参悟</span>
+        : <span className="text-[10px] px-2 py-0.5 rounded bg-stone-700/50 text-stone-500">未解锁</span>;
+
+  // 研究进度
+  const pct = isResearching && researchProgress ? Math.floor((researchProgress.progress / researchProgress.totalTicks) * 100) : 0;
+  const daysLeft = isResearching && researchProgress ? Math.ceil((researchProgress.totalTicks - researchProgress.progress) / TICKS_PER_DAY) : 0;
 
   return (
     <div className={`rounded-lg border p-3 ${statusColor} flex flex-col gap-2`}>
@@ -31,10 +40,24 @@ function PostCard({ post, researched, canResearch, onResearch }) {
       {post.energyCost < 1 && (
         <div className="text-[10px] text-cyan-400/70">可与其他非独占岗位兼任</div>
       )}
-      {canResearch && !researched && (
+
+      {/* 研究进度条 */}
+      {isResearching && (
+        <div>
+          <div className="flex justify-between text-[10px] text-blue-300 mb-1">
+            <span>参悟进度</span>
+            <span>{pct}% · 还需 {daysLeft} 天</span>
+          </div>
+          <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {canResearch && !researched && !isResearching && (
         <button onClick={() => onResearch(post.id)}
           className="mt-auto px-3 py-1.5 text-xs bg-amber-700/60 hover:bg-amber-600/60 text-amber-200 rounded transition-colors">
-          参悟 ({post.researchCost}天)
+          开始参悟 ({post.researchCost}天)
         </button>
       )}
     </div>
@@ -210,8 +233,8 @@ export default function ResearchPanel({ game, onAction }) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-stone-500">
         <span className="text-4xl mb-3">🔒</span>
-        <div className="text-sm">司务堂尚未开启</div>
-        <div className="text-xs text-stone-600 mt-1">完成首次招募后解锁</div>
+        <div className="text-sm">司务堂尚未建造</div>
+        <div className="text-xs text-stone-600 mt-1">在仓库中建造司务堂后解锁</div>
       </div>
     );
   }
@@ -262,13 +285,18 @@ export default function ResearchPanel({ game, onAction }) {
       {/* 执事册（岗位研究） */}
       {activeTab === 'posts' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {allPosts.map(post => (
-            <PostCard key={post.id} post={post}
-              researched={rs.isPostResearched(post.id)}
-              canResearch={rs.canResearchPost(post.id)}
-              onResearch={handleResearchPost}
-            />
-          ))}
+          {allPosts.map(post => {
+            const isResearching = rs.currentPostResearch?.postId === post.id;
+            return (
+              <PostCard key={post.id} post={post}
+                researched={rs.isPostResearched(post.id)}
+                canResearch={rs.canResearchPost(post.id)}
+                isResearching={isResearching}
+                researchProgress={isResearching ? rs.currentPostResearch : null}
+                onResearch={handleResearchPost}
+              />
+            );
+          })}
         </div>
       )}
 

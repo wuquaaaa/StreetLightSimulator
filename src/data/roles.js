@@ -70,6 +70,14 @@ const ROLES = {
     bg: 'bg-cyan-900/30 border-cyan-700/40',
     tabLabel: '司务堂',
   },
+  // 研究员身份（建造司务堂后获得）
+  silu: {
+    name: '司录',
+    icon: '📜',
+    color: 'text-cyan-300',
+    bg: 'bg-cyan-800/30 border-cyan-600/40',
+    tabLabel: '司务堂',
+  },
 };
 
 // 默认回退样式

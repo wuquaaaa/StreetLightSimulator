@@ -43,6 +43,9 @@ export const SaveSystem = {
       currentVehicle: game.currentVehicle || 'donkey_cart',
       // 新手教程
       tutorialStep: game.tutorialStep ?? 0,
+      // 司务堂
+      hallBuilt: game.hallBuilt || false,
+      hallBuildProgress: game.hallBuildProgress || null,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
     };
@@ -104,6 +107,14 @@ export const SaveSystem = {
     game.currentVehicle = data.currentVehicle || 'donkey_cart';
     // 新手教程（旧存档默认 -1，视为已完成）
     game.tutorialStep = data.tutorialStep != null ? data.tutorialStep : -1;
+
+    // 司务堂（旧存档如果研究已解锁则视为已建好）
+    game.hallBuilt = data.hallBuilt || false;
+    game.hallBuildProgress = data.hallBuildProgress || null;
+    if (data.researchSystem && data.researchSystem.unlocked) {
+      game.hallBuilt = true;
+      game.hallBuildProgress = null;
+    }
 
     // 研究系统
     if (data.researchSystem) {

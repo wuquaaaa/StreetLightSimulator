@@ -1,4 +1,5 @@
-import { Package, ArrowUpCircle } from 'lucide-react';
+import { Package, ArrowUpCircle, BookOpen, Hammer } from 'lucide-react';
+import { TICKS_PER_DAY } from '../engine/constants';
 
 function WarehouseCard({ name, icon, level, capacity, used, items, onUpgrade }) {
   const usagePercent = capacity > 0 ? (used / capacity) * 100 : 0;
@@ -96,6 +97,36 @@ export default function WarehousePanel({ game, onAction }) {
         <p className="text-xs text-stone-600 mt-4 text-center">
           随着发展，更多专用仓库将陆续解锁...
         </p>
+      )}
+
+      {/* 建造司务堂 */}
+      {!game.hallBuilt && (
+        <div className="mt-6 rounded-lg border border-cyan-700/50 bg-cyan-950/10 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <BookOpen size={18} className="text-cyan-400" />
+            <span className="text-sm font-bold text-cyan-300">建造司务堂</span>
+          </div>
+          <p className="text-xs text-stone-400 mb-3">
+            建造司务堂后，你将获得「司录」身份，可以参悟岗位与功法。
+          </p>
+          <div className="text-[10px] text-stone-500 mb-2">所需材料：木材 30 + 石材 15 · 建造耗时 3 天</div>
+          {game.hallBuildProgress ? (
+            <div>
+              <div className="flex justify-between text-[10px] text-cyan-300 mb-1">
+                <span>建造进度</span>
+                <span>{Math.floor((game.hallBuildProgress.progress / game.hallBuildProgress.totalTicks) * 100)}% · 还需 {Math.ceil((game.hallBuildProgress.totalTicks - game.hallBuildProgress.progress) / TICKS_PER_DAY)} 天</span>
+              </div>
+              <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
+                <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${Math.floor((game.hallBuildProgress.progress / game.hallBuildProgress.totalTicks) * 100)}%` }} />
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => onAction('build_hall')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-cyan-700/60 hover:bg-cyan-600/60 text-cyan-200 rounded transition-colors">
+              <Hammer size={12} /> 开始建造
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

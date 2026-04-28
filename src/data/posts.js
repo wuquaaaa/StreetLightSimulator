@@ -39,17 +39,6 @@ export const POSTS = {
     requires: ['zhike'],   // 前置：需要先研究知客岗位
     researchCost: 5,        // 需要研究 5 天
   },
-  cunzhang: {
-    id: 'cunzhang',
-    name: '村长',
-    icon: '🏘',
-    description: '管理农民、分配农田、调度劳作',
-    energyCost: 0.25,      // 25% 精力
-    exclusive: false,
-    category: 'management',
-    requires: ['zhike'],
-    researchCost: 8,
-  },
   tiedao: {
     id: 'tiedao',
     name: '铁道',
@@ -58,8 +47,7 @@ export const POSTS = {
     energyCost: 1.0,       // 100% 独占
     exclusive: true,
     category: 'production',
-    requires: ['fangshi'],
-    researchCost: 10,
+    researchCost: 10,       // 无前置
   },
   miaoshou: {
     id: 'miaoshou',
@@ -69,7 +57,7 @@ export const POSTS = {
     energyCost: 1.0,       // 100% 独占
     exclusive: true,
     category: 'production',
-    requires: ['tiedao'],
+    requires: ['farmer'],  // 前置：农夫
     researchCost: 12,
   },
 };

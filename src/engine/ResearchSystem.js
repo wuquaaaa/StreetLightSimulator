@@ -41,6 +41,10 @@ export class ResearchSystem {
     // { gongfuId: string, progress: number, totalTicks: number }
     this.currentGongfuResearch = null;
 
+    // 当前正在研究的岗位（一次只能研究一个）
+    // { postId: string, progress: number, totalTicks: number }
+    this.currentPostResearch = null;
+
     // NPC 学习功法进度
     // Map<characterId, { gongfuId: string, progress: number, totalTicks: number }>
     this.npcLearning = new Map();
@@ -53,7 +57,8 @@ export class ResearchSystem {
   unlock(logMsg) {
     if (this.unlocked) return;
     this.unlocked = true;
-    // 知客岗位自动获得（不需要研究）
+    // 基础岗位自动获得（不需要研究）
+    this.researchedPosts.add('farmer');
     this.researchedPosts.add('zhike');
   }
 
@@ -93,18 +98,23 @@ export class ResearchSystem {
    * @returns {{ success: boolean, message: string }}
    */
   startPostResearch(postId) {
+    if (this.currentPostResearch) {
+      const cur = getPostInfo(this.currentPostResearch.postId);
+      return { success: false, message: `正在参悟「${cur?.name}」，请等待完成` };
+    }
     const post = getPostInfo(postId);
     if (!post) return { success: false, message: '未知岗位' };
     if (!post.researchCost) return { success: false, message: '该岗位不需要研究' };
     if (this.researchedPosts.has(postId)) return { success: false, message: '该岗位已经研究过了' };
     if (!this.canResearchPost(postId)) return { success: false, message: '前置岗位尚未研究' };
 
-    // 岗位研究即时完成（简化设计：研究时间用天数表达，但实现为直接完成+等待天数）
-    this.researchedPosts.add(postId);
-    return {
-      success: true,
-      message: `岗位「${post.name}」研究完成！现在可以任命${post.name}了`,
+    const totalTicks = post.researchCost * BASE_RESEARCH_TICKS_PER_DAY;
+    this.currentPostResearch = {
+      postId,
+      progress: 0,
+      totalTicks,
     };
+    return { success: true, message: `开始参悟「${post.name}」岗位，预计需要 ${post.researchCost} 天` };
   }
 
   /**
@@ -249,6 +259,18 @@ export class ResearchSystem {
   tick(npcs, farm) {
     const messages = [];
 
+    // 推进岗位研究
+    if (this.currentPostResearch) {
+      this.currentPostResearch.progress++;
+      if (this.currentPostResearch.progress >= this.currentPostResearch.totalTicks) {
+        const postId = this.currentPostResearch.postId;
+        const post = getPostInfo(postId);
+        this.researchedPosts.add(postId);
+        this.currentPostResearch = null;
+        messages.push(`参悟成功！岗位「${post.name}」已可任命。`);
+      }
+    }
+
     // 推进功法研究
     if (this.currentGongfuResearch) {
       this.currentGongfuResearch.progress++;
@@ -332,6 +354,7 @@ export class ResearchSystem {
       unlocked: this.unlocked,
       researchedPosts: [...this.researchedPosts],
       researchedGongfu: [...this.researchedGongfu],
+      currentPostResearch: this.currentPostResearch ? { ...this.currentPostResearch } : null,
       currentGongfuResearch: this.currentGongfuResearch ? { ...this.currentGongfuResearch } : null,
       npcLearning: this.npcLearning.size > 0
         ? Object.fromEntries([...this.npcLearning].map(([k, v]) => [k, { ...v }]))
@@ -345,6 +368,7 @@ export class ResearchSystem {
     sys.unlocked = data.unlocked || false;
     sys.researchedPosts = new Set(data.researchedPosts || []);
     sys.researchedGongfu = new Set(data.researchedGongfu || []);
+    sys.currentPostResearch = data.currentPostResearch || null;
     sys.currentGongfuResearch = data.currentGongfuResearch || null;
     if (data.npcLearning && typeof data.npcLearning === 'object') {
       sys.npcLearning = new Map(Object.entries(data.npcLearning));

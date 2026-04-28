@@ -178,12 +178,12 @@ export default function GameApp() {
   const showFarmSubTabs = farmRoles.length > 1;
   const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
 
-  // 侧边栏 tab 列表（司务堂只在解锁后显示）
+  // 侧边栏 tab 列表（司务堂只在建好后显示）
   const sideTabs = [
     { id: 'farm', label: '农田', icon: Wheat },
     { id: 'village', label: '附近村庄', icon: MapPin },
     { id: 'warehouse', label: '仓库', icon: Package },
-    ...(game.researchSystem?.unlocked ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
+    ...(game.hallBuilt ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
     { id: 'character', label: '角色', icon: User },
   ];
 
