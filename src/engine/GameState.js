@@ -79,6 +79,7 @@ export class GameState {
     // currentVehicle: 当前使用的交通工具 ID（驴车/马车/牛车）
     this.recruitTask = null;
     this.recruitCandidatePool = [];
+    this.recruitSelectedCandidates = []; // 选中但尚未带回的候选人（回程中）
     this.recruitHiredCount = 0;
     this.currentVehicle = 'donkey_cart';
 
@@ -389,7 +390,7 @@ export class GameState {
         break;
       }
       case 'recruit_choose': {
-        // 亲自招募到达村庄后从候选人池选人
+        // 亲自招募：勾选/取消勾选候选人（暂存，不立即创建 NPC）
         if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
           result = { success: false, message: '当前不在选择阶段' };
           break;
@@ -399,26 +400,50 @@ export class GameState {
           result = { success: false, message: '无效的选择' };
           break;
         }
-        const chosen = this.recruitCandidatePool[candidateIndex];
-        this.recruitCandidatePool.splice(candidateIndex, 1);
-        this.recruitHiredCount++;
-        const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
-        this._tryUnlockResearch();
-
         const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
         const maxHire = vehicle.passengerCapacity;
 
-        if (this.recruitHiredCount < maxHire && this.recruitCandidatePool.length > 0) {
-          result = { success: true, message: `${chosen.name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）坐上了${vehicle.icon}${vehicle.name}！还能再选 ${maxHire - this.recruitHiredCount} 人。` };
+        // 检查候选人是否已被选中（通过 _selectedIdx 标记）
+        const candidate = this.recruitCandidatePool[candidateIndex];
+        if (candidate._selected) {
+          // 取消选择
+          candidate._selected = false;
+          this.recruitHiredCount = Math.max(0, this.recruitHiredCount - 1);
+          result = { success: true, message: `取消了 ${candidate.name} 的选择` };
         } else {
-          // 坐满了或池子空了，进入回程阶段
-          const poolMsg = this.recruitCandidatePool.length === 0 ? '候选人已选完。' : `${vehicle.name}坐满了 ${maxHire} 人，该回去了。`;
-          this.recruitTask.phase = 'returning';
-          this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
-          this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
-          this.addLog(`${chosen.name}坐上了${vehicle.name}！${poolMsg}`);
-          result = { success: true, message: `${chosen.name}坐上了${vehicle.name}！回程中...` };
+          // 选中
+          if (this.recruitHiredCount >= maxHire) {
+            result = { success: false, message: `${vehicle.name}已满，最多带 ${maxHire} 人` };
+            break;
+          }
+          candidate._selected = true;
+          this.recruitHiredCount++;
+          result = { success: true, message: `选中了 ${candidate.name}（还能再选 ${maxHire - this.recruitHiredCount} 人）` };
         }
+        break;
+      }
+      case 'recruit_confirm': {
+        // 亲自招募：确认带走已选中的人，进入回程
+        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
+          result = { success: false, message: '当前不在选择阶段' };
+          break;
+        }
+        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
+        // 把选中的候选人存入 selectedCandidates，清理候选池
+        this.recruitSelectedCandidates = this.recruitCandidatePool
+          .filter(c => c._selected)
+          .map(c => { const { _selected, ...rest } = c; return rest; });
+        this.recruitCandidatePool = [];
+
+        const count = this.recruitSelectedCandidates.length;
+        const msg = count > 0
+          ? `你带着 ${count} 位村民赶${vehicle.icon}${vehicle.name}回家！大约1天后到达。`
+          : '你没有选任何人，空车回去了。';
+        this.recruitTask.phase = 'returning';
+        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
+        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
+        this.addLog(msg);
+        result = { success: true, message: msg };
         break;
       }
       case 'recruit_skip': {
@@ -427,7 +452,9 @@ export class GameState {
           result = { success: false, message: '当前不在选择阶段' };
           break;
         }
-        // 进入回程阶段
+        // 空手回程
+        this.recruitSelectedCandidates = [];
+        this.recruitCandidatePool = [];
         this.recruitTask.phase = 'returning';
         this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
         this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
@@ -660,33 +687,72 @@ export class GameState {
     // 时间到
     if (this.recruitTask.type === 'self') {
       if (this.recruitTask.phase === 'traveling') {
-        // 亲自去：到达村庄
+        // 亲自去：到达村庄，等待玩家选人
         this.recruitTask.phase = 'waiting_choice';
         this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
       } else if (this.recruitTask.phase === 'returning') {
-        // 亲自去：回程完成
+        // 亲自去：回程完成，批量创建 NPC
         const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-        this.addLog(`你赶着${vehicle.icon}${vehicle.name}回到了家。`);
+        const toCreate = this.recruitSelectedCandidates || [];
+        if (toCreate.length > 0) {
+          for (const candidateData of toCreate) {
+            const { npc, name } = this._createNPCFarmer({ candidateData });
+            this.addLog(`${name}（${candidateData.gender === 'male' ? '男' : '女'}，${candidateData.age}岁）加入了你的队伍！`);
+          }
+          this._tryUnlockResearch();
+        }
+        this.addLog(`你赶着${vehicle.icon}${vehicle.name}回到了家。${toCreate.length > 0 ? `带回了 ${toCreate.length} 位新村民！` : ''}`);
         this.recruitTask = null;
+        this.recruitSelectedCandidates = [];
+        this.recruitHiredCount = 0;
       }
     } else {
-      // 派人去：到达 → 根据偏好自动选人带回
+      // 派人去
       const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-      if (this.recruitCandidatePool.length > 0) {
+      const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
+
+      if (this.recruitTask.phase === 'traveling') {
+        // 派人去：到达村庄，按偏好自动挑选，进入回程
         const preference = this.recruitTask.preference || 'any';
-        const bestIdx = pickBestByPreference(this.recruitCandidatePool, preference);
-        const chosen = this.recruitCandidatePool.splice(Math.max(0, bestIdx), 1)[0];
-        const { npc, name } = this._createNPCFarmer({ candidateData: chosen });
-        this.recruitHiredCount++;
-        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-        this.addLog(`${delegate ? delegate.name : '派人'}赶着${vehicle.icon}${vehicle.name}从村庄带回了 ${name}（${chosen.gender === 'male' ? '男' : '女'}，${chosen.age}岁）！`);
-      } else {
-        const { name } = this._createNPCFarmer({ minKnowledge: 1 });
-        const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-        this.addLog(`${delegate ? delegate.name : '派人'}从村庄带回了 ${name}！`);
+        const maxHire = vehicle.passengerCapacity;
+        const selected = [];
+
+        // 按偏好从候选池中依次挑最佳，直到坐满
+        const pool = [...this.recruitCandidatePool];
+        while (selected.length < maxHire && pool.length > 0) {
+          const bestIdx = pickBestByPreference(pool, preference);
+          if (bestIdx < 0) break;
+          const [picked] = pool.splice(bestIdx, 1);
+          selected.push(picked);
+        }
+
+        this.recruitSelectedCandidates = selected;
+        this.recruitCandidatePool = [];
+
+        const prefLabel = preference === 'any' ? '' : `（按要求挑了${RECRUIT_PREFERENCES.find(p => p.id === preference)?.label || ''}）`;
+        const msg = selected.length > 0
+          ? `${delegate ? delegate.name : '派出的人'}在村庄挑好了 ${selected.length} 位村民${prefLabel}，正赶${vehicle.icon}${vehicle.name}回来！`
+          : `${delegate ? delegate.name : '派出的人'}没找到合适的人${prefLabel}，正空车赶${vehicle.icon}${vehicle.name}回来...`;
+        this.addLog(msg);
+
+        this.recruitTask.phase = 'returning';
+        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
+        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
+      } else if (this.recruitTask.phase === 'returning') {
+        // 派人去：回程完成，批量创建 NPC
+        const toCreate = this.recruitSelectedCandidates || [];
+        if (toCreate.length > 0) {
+          for (const candidateData of toCreate) {
+            const { npc, name } = this._createNPCFarmer({ candidateData });
+            this.addLog(`${name}（${candidateData.gender === 'male' ? '男' : '女'}，${candidateData.age}岁）加入了你的队伍！`);
+          }
+          this._tryUnlockResearch();
+        }
+        this.addLog(`${delegate ? delegate.name : '派出的人'}赶着${vehicle.icon}${vehicle.name}回到了家。${toCreate.length > 0 ? `带回了 ${toCreate.length} 位新村民！` : ''}`);
+        this.recruitTask = null;
+        this.recruitSelectedCandidates = [];
+        this.recruitHiredCount = 0;
       }
-      this.recruitTask = null;
-      this._tryUnlockResearch();
     }
   }
 

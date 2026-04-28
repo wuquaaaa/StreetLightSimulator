@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock, UserPlus, Wheat, ChevronRight, ArrowUpCircle } from 'lucide-react';
+import { Clock, UserPlus, Wheat, ArrowUpCircle } from 'lucide-react';
 import { RECRUIT_FOOD_COST, TICKS_PER_DAY } from '../engine/constants';
 import { getVehicleInfo, getNextVehicle } from '../data/transport';
 import { getHRLevel, getHRLevelProgress, getRecruitVisibility, getAvailablePreferences, RECRUIT_PREFERENCES } from '../data/hr-levels';
@@ -30,75 +30,97 @@ function RecruitProgressCard({ label, sublabel, task }) {
   );
 }
 
-// 候选人选择弹窗（亲自招募用）
-function CandidateChoicePopup({ candidates, onChoose, onSkip, hiredCount, maxHire, visibility }) {
+// 候选人选择弹窗（亲自招募用）—— 勾选多人 + 确认带走
+function CandidateChoicePopup({ candidates, onToggle, onConfirm, onSkip, hiredCount, maxHire, visibility }) {
+  const selectedCount = candidates.filter(c => c._selected).length;
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-stone-900 border border-stone-700 rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-amber-400">🏘 村民名单</h3>
-          <button onClick={onSkip} className="text-stone-500 hover:text-stone-300 text-sm">离开</button>
+          <button onClick={onSkip} className="text-stone-500 hover:text-stone-300 text-sm">空手离开</button>
         </div>
         <p className="text-xs text-stone-400 mb-4">
-          村长带你去见了这些愿意跟随的村民：
-          <span className="text-amber-300 ml-1">（已选 {hiredCount}/{maxHire}，选人后可继续选或离开）</span>
+          村长带你去见了这些愿意跟随的村民，勾选后一起带走：
+          <span className="text-amber-300 ml-1">（已选 {selectedCount}/{maxHire}，装满{maxHire}人就要回去了）</span>
         </p>
         <div className="space-y-2">
-          {candidates.map((c, i) => (
-            <div
-              key={i}
-              className="p-3 bg-stone-800/50 rounded-lg border border-stone-700/30 hover:border-amber-600/50 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-stone-200 font-medium">{c.name}</span>
-                  <span className="text-xs text-stone-500">
-                    {c.gender === 'female' ? '♀' : '♂'} {c.age}岁
-                  </span>
-                </div>
-                <button
-                  onClick={() => onChoose(i)}
-                  disabled={hiredCount >= maxHire}
-                  className={`px-3 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
-                    hiredCount < maxHire
-                      ? 'bg-green-800/60 hover:bg-green-700/60 text-green-300'
-                      : 'bg-stone-700/40 text-stone-600 cursor-not-allowed'
-                  }`}
-                >
-                  选择 <ChevronRight size={12} />
-                </button>
-              </div>
-              {c.appearance && (
-                <div className="text-[10px] text-stone-600 italic mb-1">{c.appearance}</div>
-              )}
-              {/* 知客等级2+：看出身 */}
-              {visibility.showOrigin && c.originTrait && (
-                <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
-                  {c.originTrait.icon} {c.originTrait.name}
-                </span>
-              )}
-              {/* 知客等级3+：看通用特质 */}
-              {visibility.showTraits && c.generalTraits && c.generalTraits.length > 0 && (
-                <div className="flex flex-wrap gap-0.5 mt-0.5">
-                  {c.generalTraits.map((t, ti) => (
-                    <span key={ti} className="text-[9px] px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">
-                      {t.icon} {t.name}
-                      {visibility.showTraitDesc && t.description && (
-                        <span className="text-stone-500 ml-1">({t.description})</span>
-                      )}
+          {candidates.map((c, i) => {
+            const isSelected = !!c._selected;
+            return (
+              <div
+                key={i}
+                onClick={() => {
+                  if (!isSelected && selectedCount >= maxHire) return;
+                  onToggle(i);
+                }}
+                className={`p-3 rounded-lg border transition-colors cursor-pointer ${
+                  isSelected
+                    ? 'bg-amber-900/30 border-amber-600/60'
+                    : selectedCount >= maxHire
+                      ? 'bg-stone-800/30 border-stone-700/20 opacity-50 cursor-not-allowed'
+                      : 'bg-stone-800/50 border-stone-700/30 hover:border-amber-600/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-base leading-none ${isSelected ? 'text-amber-400' : 'text-stone-600'}`}>
+                      {isSelected ? '☑' : '☐'}
                     </span>
-                  ))}
+                    <span className="text-sm text-stone-200 font-medium">{c.name}</span>
+                    <span className="text-xs text-stone-500">
+                      {c.gender === 'female' ? '♀' : '♂'} {c.age}岁
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <span className="text-[10px] text-amber-400 bg-amber-900/40 px-1.5 py-0.5 rounded">已选</span>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+                {c.appearance && (
+                  <div className="text-[10px] text-stone-600 italic mb-1 pl-6">{c.appearance}</div>
+                )}
+                {/* 知客等级2+：看出身 */}
+                {visibility.showOrigin && c.originTrait && (
+                  <span className="ml-6 text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">
+                    {c.originTrait.icon} {c.originTrait.name}
+                  </span>
+                )}
+                {/* 知客等级3+：看通用特质 */}
+                {visibility.showTraits && c.generalTraits && c.generalTraits.length > 0 && (
+                  <div className="flex flex-wrap gap-0.5 mt-0.5 pl-6">
+                    {c.generalTraits.map((t, ti) => (
+                      <span key={ti} className="text-[9px] px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">
+                        {t.icon} {t.name}
+                        {visibility.showTraitDesc && t.description && (
+                          <span className="text-stone-500 ml-1">({t.description})</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-        <div className="mt-4 text-center">
+
+        {/* 底部操作 */}
+        <div className="mt-5 flex gap-2">
           <button
             onClick={onSkip}
-            className="text-xs text-stone-500 hover:text-stone-400 transition-colors"
+            className="flex-1 py-2 rounded-lg text-xs bg-stone-700/60 text-stone-400 hover:bg-stone-700 transition-colors"
           >
-            没有合适的人选，返回
+            没有合适的，回去吧
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={selectedCount === 0}
+            className={`flex-[2] py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1 ${
+              selectedCount > 0
+                ? 'bg-amber-700 hover:bg-amber-600 text-amber-100'
+                : 'bg-stone-700 text-stone-500 cursor-not-allowed'
+            }`}
+          >
+            🚗 带 {selectedCount} 人回家！
           </button>
         </div>
       </div>
@@ -227,6 +249,20 @@ export default function RecruitPanel({ game, onAction }) {
     if (onAction) onAction('upgrade_vehicle');
   };
 
+  // 候选人勾选/取消勾选
+  const handleToggle = (index) => {
+    if (onAction) onAction('recruit_choose', { candidateIndex: index });
+  };
+
+  // 确认带走
+  const handleConfirm = () => {
+    if (onAction) onAction('recruit_confirm');
+  };
+
+  const handleSkip = () => {
+    if (onAction) onAction('recruit_skip');
+  };
+
   // 进行中的任务
   const isTraveling = recruitTask && recruitTask.phase === 'traveling';
   const isReturning = recruitTask && recruitTask.phase === 'returning';
@@ -238,14 +274,6 @@ export default function RecruitPanel({ game, onAction }) {
 
   // 候选人选择弹窗（亲自招募）
   const showCandidatePopup = game.recruitTask?.phase === 'waiting_choice' && game.recruitCandidatePool?.length > 0;
-
-  const handleChoose = (index) => {
-    if (onAction) onAction('recruit_choose', { candidateIndex: index });
-  };
-
-  const handleSkip = () => {
-    if (onAction) onAction('recruit_skip');
-  };
 
   // 当前派出NPC的知客信息
   const selectedDelegateHr = selectedDelegate ? getHRLevel(selectedDelegate.hrExp || 0) : null;
@@ -301,18 +329,27 @@ export default function RecruitPanel({ game, onAction }) {
       </div>
 
       {/* 招募进行中 */}
-      {isTraveling && (
+      {(isTraveling || isReturning) && (
         <div className="mb-4">
           {recruitTask.type === 'self' ? (
             <RecruitProgressCard
-              label="你正前往村庄..."
-              sublabel="出发招募期间，无法亲自操作农田"
+              label={isTraveling ? '你正前往村庄...' : `赶${vehicle.icon}${vehicle.name}回家中...`}
+              sublabel={isTraveling
+                ? '出发招募期间，无法亲自操作农田'
+                : `带着 ${game.recruitSelectedCandidates?.length || 0} 位村民回家，快到了！`
+              }
               task={recruitTask}
             />
           ) : (
             <RecruitProgressCard
-              label={`${game.characters.find(c => c.id === recruitTask.delegateId)?.name || '某人'}正前往村庄...`}
-              sublabel={`派人招募，${recruitTask.preference === 'any' ? '随机带回' : `按要求挑选${RECRUIT_PREFERENCES.find(p => p.id === recruitTask.preference)?.label || ''}`}`}
+              label={isTraveling
+                ? `${game.characters.find(c => c.id === recruitTask.delegateId)?.name || '某人'}正前往村庄...`
+                : `${game.characters.find(c => c.id === recruitTask.delegateId)?.name || '某人'}正赶回来...`
+              }
+              sublabel={isTraveling
+                ? `派人招募，${recruitTask.preference === 'any' ? '随机带回' : `按要求挑选${RECRUIT_PREFERENCES.find(p => p.id === recruitTask.preference)?.label || ''}`}`
+                : `带着 ${game.recruitSelectedCandidates?.length || 0} 位村民回来了！`
+              }
               task={recruitTask}
             />
           )}
@@ -445,7 +482,8 @@ export default function RecruitPanel({ game, onAction }) {
       {showCandidatePopup && (
         <CandidateChoicePopup
           candidates={game.recruitCandidatePool}
-          onChoose={handleChoose}
+          onToggle={handleToggle}
+          onConfirm={handleConfirm}
           onSkip={handleSkip}
           hiredCount={game.recruitHiredCount || 0}
           maxHire={game.maxRecruitHire}
