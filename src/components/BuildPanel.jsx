@@ -1,6 +1,7 @@
 import { Hammer, Lock, Clock, CheckCircle2 } from 'lucide-react';
 import { BUILDING_DEFS } from '../data/buildings';
 import { TICKS_PER_DAY } from '../engine/constants';
+import { WAREHOUSE_CATEGORIES } from '../engine/WarehouseSystem';
 
 /**
  * 建筑卡片
@@ -9,6 +10,7 @@ function BuildingCard({ def, game, onBuild, isBuilding }) {
   const canBuild = !isBuilding && !game.buildings.includes(def.id) && def.requires(game);
   const isBuilt = game.buildings.includes(def.id);
   const locked = !def.requires(game) && !isBuilt;
+  const verb = def.buildLabel || '建造';
 
   // 计算材料是否足够
   const costsStatus = def.costs.map(cost => {
@@ -40,22 +42,25 @@ function BuildingCard({ def, game, onBuild, isBuilding }) {
           {/* 材料列表 */}
           {!isBuilt && (
             <div className="space-y-1 mb-2">
-              {costsStatus.map((cost, i) => (
-                <div key={i} className="flex items-center justify-between text-[11px]">
-                  <span className="text-stone-500">{cost.name}</span>
-                  <span className={cost.enough ? 'text-green-400' : 'text-red-400'}>
-                    {cost.have} / {cost.amount}
-                  </span>
-                </div>
-              ))}
+              {costsStatus.map((cost, i) => {
+                const catIcon = WAREHOUSE_CATEGORIES[cost.category]?.icon || '📦';
+                return (
+                  <div key={i} className="flex items-center justify-between text-[11px]">
+                    <span className="text-stone-400">{catIcon} {cost.name}</span>
+                    <span className={cost.enough ? 'text-green-400' : 'text-red-400'}>
+                      {cost.have} / {cost.amount}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* 建造信息 */}
+          {/* {verb}信息 */}
           {!isBuilt && !locked && (
             <div className="flex items-center gap-1 text-[10px] text-stone-500 mb-2">
               <Clock size={10} />
-              <span>建造耗时 {def.buildDays} 天</span>
+              <span>{verb}耗时 {def.buildDays} 天</span>
             </div>
           )}
 
@@ -78,7 +83,7 @@ function BuildingCard({ def, game, onBuild, isBuilding }) {
               }`}
             >
               <Hammer size={12} />
-              {canBuild && allMaterialsEnough ? '开始建造' : '材料不足'}
+              {canBuild && allMaterialsEnough ? `开始${verb}` : '材料不足'}
             </button>
           )}
         </div>
@@ -93,6 +98,7 @@ function BuildingCard({ def, game, onBuild, isBuilding }) {
 function BuildProgressCard({ def, progress, totalTicks }) {
   const percent = Math.floor((progress / totalTicks) * 100);
   const daysLeft = Math.ceil((totalTicks - progress) / TICKS_PER_DAY);
+  const verb = def.buildLabel || '建造';
 
   return (
     <div className="rounded-lg border border-amber-700/40 bg-amber-950/10 p-4">
@@ -100,7 +106,7 @@ function BuildProgressCard({ def, progress, totalTicks }) {
         <span className="text-xl">{def.icon}</span>
         <span className="text-amber-300 font-bold text-sm">{def.name}</span>
         <span className="text-[10px] text-amber-400/70 bg-amber-900/20 px-2 py-0.5 rounded ml-auto">
-          建造中
+          {verb}中
         </span>
       </div>
       <p className="text-xs text-stone-400 mb-2 italic">"{def.story}"</p>

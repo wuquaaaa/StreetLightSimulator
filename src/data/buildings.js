@@ -20,6 +20,7 @@ export const BUILDING_DEFS = [
       { category: 'food', itemId: 'wheat', name: '小麦', amount: 15 },
     ],
     buildDays: 2,
+    buildLabel: '探索',
     unique: true,
     requires: (game) => !game.buildings.includes('mountain_trail'),
     onBuilt: (game) => {

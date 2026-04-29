@@ -34,6 +34,7 @@ export default function GameApp() {
   const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [saveLoadDefaultMode, setSaveLoadDefaultMode] = useState('save');
   const [activeEvent, setActiveEvent] = useState(null);
+  const activeEventRef = useRef(null);
   const [bgmOn, setBgmOn] = useState(false);
   const timerRef = useRef(null);
   const autoSaveRef = useRef(null);
@@ -68,8 +69,9 @@ export default function GameApp() {
       const tutorialNotifs = g.notifications.filter(n => n.startsWith('tutorial:'));
       const normalNotifs = g.notifications.filter(n => !n.startsWith('event:') && !n.startsWith('tutorial:'));
 
-      if (eventNotifs.length > 0) {
+      if (eventNotifs.length > 0 && !activeEventRef.current) {
         const eventType = eventNotifs[0].replace('event:', '');
+        activeEventRef.current = eventType;
         setActiveEvent(eventType);
       }
 
@@ -125,6 +127,7 @@ export default function GameApp() {
   const handleEventAction = useCallback((action, params = {}) => {
     if (action === 'dismiss_event') {
       sfxClick();
+      activeEventRef.current = null;
       setActiveEvent(null);
       return;
     }
@@ -134,6 +137,7 @@ export default function GameApp() {
     forceUpdate();
     // 招募+升职操作完成后自动关闭弹窗
     if (action === 'recruit_accept_with_promote' && result && result.success) {
+      activeEventRef.current = null;
       setActiveEvent(null);
     }
   }, [forceUpdate]);
