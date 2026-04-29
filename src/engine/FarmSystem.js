@@ -75,10 +75,18 @@ export const FIELD_DISPLAY = {
 // ======================================================
 
 /**
- * 根据灵气均值、灵蛊状态、产量修正 计算灵草品质
+ * 根据灵气均值、灵蛊状态、产量修正、特质联动加成 计算灵草品质
  */
-function rollHerbQuality(crop, spiritAuraAvg, hadSpiritBug, yieldMod) {
+function rollHerbQuality(crop, spiritAuraAvg, hadSpiritBug, yieldMod, herbQualityBonus = 0) {
   const base = { ...crop.qualityWeights };
+
+  // 特质联动：灵草品质加成（提高高品质权重）
+  if (herbQualityBonus > 0) {
+    const qb = herbQualityBonus;
+    base.supreme  = Math.round(base.supreme  * (1 + qb * 3));
+    base.high     = Math.round(base.high     * (1 + qb * 2));
+    base.medium   = Math.round(base.medium   * (1 + qb * 1));
+  }
 
   // 灵气加成
   const auraMod = Math.max(0, (spiritAuraAvg - 50) / 50);
@@ -194,13 +202,13 @@ export class FarmPlot {
     return !!(crop && crop.isHerb);
   }
 
-  calculateHerbQuality() {
+  calculateHerbQuality(herbQualityBonus = 0) {
     const crop = this.getCropDef();
     if (!crop || !crop.isHerb) return null;
     const avgAura = this._spiritAuraTickCount > 0
       ? this._spiritAuraAccum / this._spiritAuraTickCount
       : this.spiritAura;
-    return rollHerbQuality(crop, avgAura, this.hadSpiritBug, this.cropYieldMod);
+    return rollHerbQuality(crop, avgAura, this.hadSpiritBug, this.cropYieldMod, herbQualityBonus);
   }
 
   toJSON() {
@@ -431,7 +439,10 @@ export class FarmSystem {
   water(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    plot.waterLevel = Math.min(100, plot.waterLevel + WATER_ADD_AMOUNT);
+    // 特质联动：浇水效果乘数（outputMultiplier × waterMultiplier）
+    const synergyMul = (character.getSynergyOutputMultiplier?.() || 1) * (character.getSynergyWaterMultiplier?.() || 1);
+    const addAmount = Math.round(WATER_ADD_AMOUNT * synergyMul);
+    plot.waterLevel = Math.min(100, plot.waterLevel + addAmount);
     character.gainKnowledge('farming', 0.5);
     return { success: true, message: '浇水完成' };
   }
@@ -440,7 +451,10 @@ export class FarmSystem {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
     if (plot.fertility >= 100) return { success: false, message: '肥力已满' };
-    plot.fertility = Math.min(100, plot.fertility + FERTILITY_ADD_AMOUNT);
+    // 特质联动：施肥效果乘数（outputMultiplier × fertilizeMultiplier）
+    const synergyMul = (character.getSynergyOutputMultiplier?.() || 1) * (character.getSynergyFertilizeMultiplier?.() || 1);
+    const addAmount = Math.round(FERTILITY_ADD_AMOUNT * synergyMul);
+    plot.fertility = Math.min(100, plot.fertility + addAmount);
     character.gainKnowledge('farming', 0.5);
     return { success: true, message: `施肥完成，肥力 ${Math.floor(plot.fertility)}` };
   }
@@ -448,8 +462,11 @@ export class FarmSystem {
   removePest(plotId, character, clearAmount = 1) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasPest) return { success: false, message: '没有病虫害' };
-    plot.pestSeverity = Math.max(0, plot.pestSeverity - clearAmount);
-    character.gainKnowledge('farming', 0.3 * clearAmount);
+    // 特质联动：除虫产出乘数
+    const synergyMul = character.getSynergyOutputMultiplier?.() || 1;
+    const actualClear = Math.max(1, Math.round(clearAmount * synergyMul));
+    plot.pestSeverity = Math.max(0, plot.pestSeverity - actualClear);
+    character.gainKnowledge('farming', 0.3 * actualClear);
     if (plot.pestSeverity <= 0) {
       plot.hasPest = false;
       plot.pestSeverity = 0;
@@ -461,8 +478,11 @@ export class FarmSystem {
   removeSpiritBug(plotId, character, clearAmount = 1) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot || !plot.hasSpiritBug) return { success: false, message: '没有灵蛊' };
-    plot.spiritBugSeverity = Math.max(0, plot.spiritBugSeverity - clearAmount);
-    character.gainKnowledge('farming', 0.5 * clearAmount);
+    // 特质联动：除虫产出乘数
+    const synergyMul = character.getSynergyOutputMultiplier?.() || 1;
+    const actualClear = Math.max(1, Math.round(clearAmount * synergyMul));
+    plot.spiritBugSeverity = Math.max(0, plot.spiritBugSeverity - actualClear);
+    character.gainKnowledge('farming', 0.5 * actualClear);
     if (plot.spiritBugSeverity <= 0) {
       plot.hasSpiritBug = false;
       plot.spiritBugSeverity = 0;
@@ -474,7 +494,10 @@ export class FarmSystem {
   removeWeeds(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
-    plot.weedGrowth = Math.max(0, plot.weedGrowth - WEED_REMOVE_AMOUNT);
+    // 特质联动：除草效果乘数
+    const synergyMul = character.getSynergyOutputMultiplier?.() || 1;
+    const removeAmount = Math.round(WEED_REMOVE_AMOUNT * synergyMul);
+    plot.weedGrowth = Math.max(0, plot.weedGrowth - removeAmount);
     character.gainKnowledge('farming', 0.2);
     return { success: true, message: `除草完成，杂草 ${Math.floor(plot.weedGrowth)}` };
   }
@@ -492,7 +515,12 @@ export class FarmSystem {
     );
     const actualYield = Math.max(1, Math.floor(rawAmount * yieldMod));
     const bonusYield = isHighQuality ? Math.ceil(actualYield * 0.3) : 0;
-    const totalYield = actualYield + bonusYield;
+    // 特质联动：灵草产量加成
+    const herbYieldBonus = crop.isHerb ? (character.getSynergyHerbYieldBonus?.() || 0) : 0;
+    let totalYield = actualYield + bonusYield;
+    if (herbYieldBonus > 0) {
+      totalYield = Math.ceil(totalYield * (1 + herbYieldBonus));
+    }
 
     // 种子掉落
     const baseYield = crop.baseYield || 5;
@@ -506,10 +534,11 @@ export class FarmSystem {
       seedBack = Math.random() < 0.3 ? 2 : 1;
     }
 
-    // 灵草品质计算
+    // 灵草品质计算（含特质联动加成）
     let herbQuality = null;
     if (crop.isHerb) {
-      herbQuality = plot.calculateHerbQuality();
+      const herbQualityBonus = character.getSynergyHerbQualityBonus?.() || 0;
+      herbQuality = plot.calculateHerbQuality(herbQualityBonus);
     }
 
     const yieldPct = Math.round((yieldMod - 1) * 100);

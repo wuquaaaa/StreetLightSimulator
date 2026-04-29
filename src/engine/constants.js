@@ -105,6 +105,13 @@ export const RECRUIT_RETURN_TICKS = 10;       // 亲自去选完人后回程：1
 // NPC通过干活积累经验提升知客等级，等级越高招募时能看到越多信息
 export const HR_EXP_PER_TICK = 0.1;          // 每tick干活获得0.1知客经验
 
+// ====== 特质揭示系统 ======
+// 玩家对 NPC 特质的了解程度门槛（同岗共事天数）
+// 达到后可见：特质数值效果、特质联动名称与效果
+export const TRAIT_INSIGHT_PER_DAY = 10;     // 共事每天获得10点洞察
+export const TRAIT_INSIGHT_THRESHOLD = 100;  // 100点 = 10天共事（或知客任职10天）
+export const ZHIIKE_INSIGHT_BONUS_LEVEL = 2; // HR等级>=此值时知客洞察翻倍
+
 // ====== 灵田升级系统 ======
 // 灵田类型
 export const PLOT_TYPE_NORMAL  = 'normal';   // 普通农田

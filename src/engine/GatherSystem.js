@@ -198,7 +198,11 @@ export class GatherSystem {
         eff *= (1 + trait.effects.workSpeedBonus);
       }
     }
-    return Math.max(0.2, Math.min(2.0, eff));
+    // 特质联动产出乘数
+    if (typeof character.getSynergyOutputMultiplier === 'function') {
+      eff *= character.getSynergyOutputMultiplier();
+    }
+    return Math.max(0.2, Math.min(2.5, eff));
   }
 
   toJSON() {

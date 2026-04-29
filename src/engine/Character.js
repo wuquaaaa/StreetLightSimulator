@@ -12,6 +12,7 @@ import { POSTS, getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
 import {
   WEED_THRESHOLD, NPC_WATER_THRESHOLD,
+  TRAIT_INSIGHT_THRESHOLD,
 } from './constants';
 
 // ====== 基础属性（发现层） ======
@@ -110,6 +111,9 @@ export class Character {
     // 应用特质加成到基础属性
     this._applyTraitBonuses();
 
+    // ====== 特质联动缓存 ======
+    this._synergyCache = null;
+
     // ====== 经验属性（发现层） ======
     this.knowledgeAttributes = {};
     for (const key of Object.keys(KNOWLEDGE_ATTRIBUTES)) {
@@ -127,6 +131,12 @@ export class Character {
     // revealedAttributes: { farming: 100, learning: 300, ... } 记录揭示时的共事tick数
     this.revealedAttributes = {};
     this.daysWorked = 0;  // 共事天数（tick 计数，在 GameState 中递增）
+
+    // ====== 特质揭示系统 ======
+    // playerTraitInsight: 玩家对此 NPC 特质的了解程度（0~∞）
+    // 积累条件：同岗共事 或 玩家是知客
+    // 达到 TRAIT_INSIGHT_THRESHOLD 后可见特质详情及联动
+    this.playerTraitInsight = 0;
 
     // 旧字段兼容
     this.attributesRevealed = false;
@@ -297,7 +307,7 @@ export class Character {
   }
 
   /**
-   * 获取食物消耗倍率（考虑特质+命格）
+   * 获取食物消耗倍率（考虑特质+命格+联动）
    */
   getFoodConsumptionModifier() {
     let mod = 1.0;
@@ -309,11 +319,75 @@ export class Character {
     if (this.fate?.modifiers?.foodConsumption) {
       mod += this.fate.modifiers.foodConsumption;
     }
+    // 特质联动：食物消耗减免
+    mod += this.getSynergyFoodReduction();
     return Math.max(0.3, mod);
   }
 
+  // ====== 特质联动系统（方案 B：影响产出，不影响操作频率） ======
+
+  /**
+   * 获取当前激活的特质联动列表（惰性缓存）
+   */
+  getActiveSynergies() {
+    if (this._synergyCache) return this._synergyCache;
+    const traitIds = this.traits.map(t => t.id);
+    this._synergyCache = getActiveSynergies(traitIds);
+    return this._synergyCache;
+  }
+
+  /**
+   * 聚合所有联动效果（乘数叠加）
+   */
+  getSynergyEffects() {
+    const synergies = this.getActiveSynergies();
+    const agg = {};
+    for (const syn of synergies) {
+      for (const [key, val] of Object.entries(syn.effects)) {
+        agg[key] = agg[key] == null ? val : agg[key] * val;
+      }
+    }
+    return agg;
+  }
+
+  /** 联动产出乘数（所有农田操作） */
+  getSynergyOutputMultiplier() { return this.getSynergyEffects().outputMultiplier || 1.0; }
+  /** 联动除虫乘数 */
+  getSynergyPestMultiplier() { return this.getSynergyEffects().pestMultiplier || 1.0; }
+  /** 联动浇水乘数 */
+  getSynergyWaterMultiplier() { return this.getSynergyEffects().waterMultiplier || 1.0; }
+  /** 联动施肥乘数 */
+  getSynergyFertilizeMultiplier() { return this.getSynergyEffects().fertilizeMultiplier || 1.0; }
+  /** 联动灵草品质加成 */
+  getSynergyHerbQualityBonus() { return this.getSynergyEffects().herbQualityBonus || 0; }
+  /** 联动灵草产量加成 */
+  getSynergyHerbYieldBonus() { return this.getSynergyEffects().herbYieldBonus || 0; }
+  /** 联动耕种经验加成 */
+  getSynergyFarmingExpBonus() { return this.getSynergyEffects().farmingExpBonus || 0; }
+  /** 联动学习力经验加成 */
+  getSynergyLearningExpBonus() { return this.getSynergyEffects().learningExpBonus || 0; }
+
+  // ====== 特质揭示（可见性门控） ======
+
+  /**
+   * 获取玩家对此 NPC 特质的可见性等级
+   * @returns {{ namesOnly: boolean, details: boolean, synergies: boolean }}
+   */
+  getTraitVisibility() {
+    const insight = this.playerTraitInsight || 0;
+    const revealed = insight >= TRAIT_INSIGHT_THRESHOLD;
+    return {
+      namesOnly: !revealed,
+      details: revealed,
+      synergies: revealed,
+    };
+  }
+  /** 联动食物消耗减免 */
+  getSynergyFoodReduction() { return this.getSynergyEffects().foodReduction || 0; }
+
   /**
    * 获取工作速率（含特质修正+年龄修正+岗位精力修正）
+   * 注意：方案 B 下联动效果不影响 OPS，仅影响单次操作产出
    */
   getFarmWorkSpeed() {
     const farming = this.knowledgeAttributes.farming || 0;
@@ -375,14 +449,16 @@ export class Character {
 
   /**
    * 获取此角色每动作清除的虫害严重度
-   * 默认 1，受 pestEfficiency 影响
+   * 默认 1，受 pestEfficiency + 联动 pestMultiplier 影响
    */
   getPestClearAmount() {
     let amount = 1;
     for (const trait of this.traits) {
       if (trait.effects?.pestEfficiency) amount += trait.effects.pestEfficiency;
     }
-    return Math.max(1, Math.min(5, amount));
+    // 特质联动：除虫效率乘数
+    amount *= this.getSynergyPestMultiplier();
+    return Math.max(1, Math.min(8, Math.round(amount)));
   }
 
   /**
@@ -445,14 +521,23 @@ export class Character {
   calculateOutput(baseAmount, knowledgeKey, baseAttrKey = 'focus') {
     const efficiency = this.getWorkEfficiency(knowledgeKey, baseAttrKey);
     const qualityRate = this.getQualityRate(knowledgeKey);
-    const amount = Math.max(1, Math.floor(baseAmount * efficiency));
+    // 特质联动：产出乘数（方案 B）
+    const synergyMul = this.getSynergyOutputMultiplier();
+    const amount = Math.max(1, Math.floor(baseAmount * efficiency * synergyMul));
     const isHighQuality = Math.random() < qualityRate;
     return { amount, isHighQuality };
   }
 
   gainKnowledge(knowledgeKey, baseAmount) {
     if (!(knowledgeKey in this.knowledgeAttributes)) return;
-    const learningMod = 0.5 + (this.baseAttributes.learning || 50) / 100;
+    let learningMod = 0.5 + (this.baseAttributes.learning || 50) / 100;
+    // 特质联动：经验获取加成
+    if (knowledgeKey === 'farming') {
+      learningMod *= (1 + this.getSynergyFarmingExpBonus());
+    }
+    if (knowledgeKey === 'research') {
+      learningMod *= (1 + this.getSynergyLearningExpBonus());
+    }
     const actualGain = baseAmount * learningMod;
     this.knowledgeAttributes[knowledgeKey] = Math.min(100, this.knowledgeAttributes[knowledgeKey] + actualGain);
   }
@@ -492,6 +577,8 @@ export class Character {
       // 揭示
       revealedAttributes: { ...this.revealedAttributes },
       daysWorked: this.daysWorked,
+      // 特质揭示
+      playerTraitInsight: this.playerTraitInsight || 0,
       // 旧兼容
       attributesRevealed: this.attributesRevealed,
       // 岗位系统
@@ -518,6 +605,7 @@ export class Character {
     char.knowledgeAttributes = { ...data.knowledgeAttributes };
     char.revealedAttributes = data.revealedAttributes || {};
     char.daysWorked = data.daysWorked || 0;
+    char.playerTraitInsight = data.playerTraitInsight || 0;
     char.attributesRevealed = data.attributesRevealed;
     // 岗位系统
     char.posts = data.posts || [];

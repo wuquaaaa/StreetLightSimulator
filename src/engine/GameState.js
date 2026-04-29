@@ -23,6 +23,7 @@ import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
   RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
   RECRUIT_RETURN_TICKS, HR_EXP_PER_TICK,
+  TRAIT_INSIGHT_PER_DAY, ZHIIKE_INSIGHT_BONUS_LEVEL,
 } from './constants';
 import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
 import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
@@ -44,6 +45,7 @@ const FARM_DELEGATES = {
 const WAREHOUSE_DELEGATES = {
   upgrade_common:    (g) => g.warehouse.upgradeCommon(),
   upgrade_warehouse: (g, p) => g.warehouse.upgradeWarehouse(p.category),
+  move_item:         (g, p) => g.warehouse.moveItem(p.fromShelfId, p.toShelfId, p.itemId, p.amount),
 };
 const GATHER_DELEGATES = {
   assign_gather_node:   (g, p) => g.gatherSystem.assignNode(p.nodeId, p.characterId),
@@ -212,6 +214,10 @@ export class GameState {
         }
       }
 
+      // 特质揭示（玩家对 NPC 特质的了解）
+      // 规则：同岗共事 或 玩家是知客 → 积累洞察
+      this._tickTraitInsight();
+
       // 每年（28天）推进 NPC 年龄 + 退休检查
       if (this.day > 1 && (this.day - 1) % 28 === 0) {
         this._tickAging();
@@ -265,6 +271,16 @@ export class GameState {
       availableNPCs = availableNPCs.filter(c => !recruitingIds.has(c.id));
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
+
+    // 房事 NPC 自动整理货架（逐 tick 搬运，耗时取决于 NPC 速度）
+    const fangshiNPC = this.characters.find(c => !c.isRetired && c.hasPost('fangshi'));
+    if (fangshiNPC) {
+      const speed = fangshiNPC.getFarmWorkSpeed?.() || 1;
+      const result = this.warehouse.tickFangshi(speed);
+      if (result && result.success) {
+        this.addLog(`[房事] ${result.message}`);
+      }
+    }
 
     // 后山采集系统 tick（每天产出材料）
     if (this.gatherSystem.unlocked) {
@@ -993,6 +1009,34 @@ export class GameState {
     this.addLog('你意识到只靠种地养不活这么多人。你开始思考分工与规矩……');
     this.addLog('也许该建造一间司务堂来统筹事务……');
     this.triggeredEvents['recruit'] = 'accepted';
+  }
+
+  /**
+   * 特质揭示：玩家对 NPC 特质的了解
+   * 规则：
+   *   - 同岗共事：玩家与 NPC 共享角色 → 每天积累洞察
+   *   - 知客感知：有熟络级知客 → 对所有 NPC 积累洞察（不限制同岗）
+   */
+  _tickTraitInsight() {
+    const playerRoles = new Set(this.player.roles);
+
+    // 是否有「熟络」及以上的知客 NPC（可跨岗感知）
+    const hasQualifiedZhike = this.characters.some(
+      npc => !npc.isRetired && npc.hasPost('zhike') && getHRLevel(npc.hrExp || 0).level >= 2
+    );
+
+    for (const npc of this.characters) {
+      if (npc.isRetired) continue;
+
+      if (hasQualifiedZhike) {
+        npc.playerTraitInsight = (npc.playerTraitInsight || 0) + TRAIT_INSIGHT_PER_DAY;
+      } else {
+        const sharesRole = npc.roles.some(r => playerRoles.has(r));
+        if (sharesRole) {
+          npc.playerTraitInsight = (npc.playerTraitInsight || 0) + TRAIT_INSIGHT_PER_DAY;
+        }
+      }
+    }
   }
 
   /**

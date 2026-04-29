@@ -1,16 +1,400 @@
-# React + Vite
+# 🌾 路灯计划 (Streetlamp Simulator)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> 深度农耕模拟策略游戏 — 管理农田、招募村民、研究功法、建造建筑，
+> 在四季轮回中从一块空地起步，经营属于你的小村庄。
+>
+> React + Vite · 纯前端 · tick 驱动 · 浏览器 localStorage 存档
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🎯 游戏目标（0.0.1 阶段）
 
-## React Compiler
+**核心循环**：种地 → 攒粮 → 招募 NPC → 分工协作 → 扩大生产 → 解锁司务堂 → 研究岗位/功法 → 更强的 NPC → 更多产出
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+当前是**沙盒经营**阶段，无明确胜利条件。最终目标是养活一支自给自足的村庄。
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🏗️ 技术架构
+
+```
+TICK LOOP (GameApp.jsx, 2s interval)
+  │
+  ├─ GameState.tick()
+  │   ├─ 时间推进 (tickCount → day → season → year)
+  │   ├─ FarmSystem.tick()        # 每个地块生长/蒸发/虫害/杂草
+  │   ├─ NPCAISystem.tickAutoWork() # NPC 自动劳作（优先级 AI）
+  │   ├─ FoodSystem.consumeDaily()   # 每日食物消耗
+  │   ├─ EventSystem.checkEvents()   # 事件触发
+  │   ├─ GatherSystem.tick()         # 后山采集产出
+  │   ├─ ResearchSystem.tick()       # 岗位/功法研究进度
+  │   ├─ buildQueue 推进             # 建筑建造进度
+  │   └─ recruitTask 推进            # 招募往返计时
+  │
+  └─ React re-render → UI 更新
+```
+
+**数据流**：纯前端单线程，GameState 持有所有状态，tick 驱动全部系统推进。无后端，无数据库，无 WebSocket。
+
+### 目录结构
+
+```
+src/
+├── engine/               # 核心逻辑层（纯 JS，不依赖 React）
+│   ├── GameState.js       # 主状态机（42800 行，最重的文件）
+│   ├── FarmSystem.js      # 农田系统（35500 行）
+│   ├── Character.js       # 角色系统（20000 行）
+│   ├── ResearchSystem.js  # 司务堂研究与学习
+│   ├── NPCAISystem.js     # NPC 自动劳作 AI
+│   ├── WarehouseSystem.js # 仓库物品管理
+│   ├── FoodSystem.js      # 食物消耗
+│   ├── GatherSystem.js    # 后山采集
+│   ├── EventSystem.js     # 事件触发
+│   ├── SaveSystem.js      # localStorage 存档
+│   ├── AudioSystem.js     # Web Audio API 音效+BGM
+│   └── constants.js       # 全游戏数值常量
+│
+├── data/                 # 静态数据定义
+│   ├── traits.js          # ★ 特质 + 特质联动规则（14条联动）
+│   ├── crops.js           # 作物/灵草（小麦、灵草等）
+│   ├── gongfu.js          # 功法定义（7种）
+│   ├── posts.js           # 岗位定义（知客/房事/铁道/妙手）
+│   ├── fates.js           # 命格系统（天/异/凡命，10种+）
+│   ├── names.js           # 名字生成器
+│   ├── buildings.js       # 可建造建筑（后山小径/大仓库/司务堂）
+│   ├── transport.js       # 交通工具（驴车→马车→牛车）
+│   ├── hr-levels.js       # 知客等级（招募可见性）
+│   ├── gather-nodes.js    # 后山资源点定义
+│   ├── roles.js           # 角色身份显示信息
+│   ├── technologies.js    # 科技树（未集成到当前玩法）
+│   └── _planned/          # 预留但未集成的数据（文明策略遗留）
+│       ├── events.js      # 13个事件定义（condition 引用了不存在的字段，需重写）
+│       └── buildings.js   # 22种建筑（引用旧科技ID，需重写）
+│
+├── components/           # React UI 层
+│   ├── GameApp.jsx        # 主容器：tick 定时器 + tab 路由 + 存档调度
+│   ├── FarmPanel.jsx      # 农田面板（耕作的详细视图，26900 行最大组件）
+│   ├── FarmLeaderPanel.jsx# 农民队长面板（管理视图，地块分配）
+│   ├── RecruitPanel.jsx   # 招募面板（亲自/派人 + 候选人选择）
+│   ├── CharacterPanel.jsx # 角色详情（属性/特质/岗位/功法）
+│   ├── ResearchPanel.jsx  # 司务堂研究面板
+│   ├── BuildPanel.jsx     # 建筑面板
+│   ├── WarehousePanel.jsx # 仓库面板
+│   ├── GatherPanel.jsx    # 后山采集面板
+│   ├── TopBar.jsx         # 顶部资源/时间栏
+│   ├── GameLog.jsx        # 底部日志栏
+│   ├── EventPopup.jsx     # 事件弹窗
+│   ├── SaveLoadPanel.jsx  # 存档/读档面板
+│   ├── TutorialOverlay.jsx# 新手教程（12步引导）
+│   ├── NotificationPopup.jsx
+│   └── _planned/          # 预留但未集成的组件（旧文明策略遗留）
+│       ├── DiplomacyPanel.jsx
+│       ├── MilitaryPanel.jsx
+│       ├── EconomyPanel.jsx
+│       ├── PopulationPanel.jsx
+│       ├── OverviewPanel.jsx
+│       └── TechPanel.jsx
+```
+
+---
+
+## 🕐 时间系统
+
+| 单位 | 值 | 说明 |
+|------|-----|------|
+| tick | 2 秒（实际时间） | 游戏主循环间隔 |
+| 天 | 10 tick | 农田生长/食物消耗/采集产出的最小单位 |
+| 季 | 7 天 | 春→夏→秋→冬，影响作物 |
+| 年 | 28 天 (4季) | NPC 年龄+1，退休检查 |
+
+**冬季特殊规则**：每天 10% 概率冻死一块作物。
+
+---
+
+## 👤 NPC 系统
+
+### 属性三层
+
+| 层级 | 包含 | 可见条件 |
+|------|------|----------|
+| **表层** | 性别、年龄、出身、特质名称/图标、外貌 | 招募时直接可见 |
+| **发现层** | 耕种等级、学习天赋、专注力、体质、忠诚度 | 共事 N 天后逐步揭示 |
+| **隐藏层** | 命格 | 永远不可见（通过行为间接感知） |
+
+### ⚡ 信息可见性设计原则
+
+> **玩家看到什么信息，严格受其身份/岗位/经历约束。不可「上帝视角」。**
+
+| 信息类型 | 农夫（农民） | 知客（低级） | 知客（高级） | 共事够久 | 功法辅助 |
+|----------|:-----------:|:----------:|:----------:|:-------:|:-------:|
+| 特质名称/图标 | ✅ 招募时 | ✅ | ✅ | ✅ | — |
+| 特质数值效果 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| 联动名称与效果 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| 基础属性（发现层） | ❌ | ❌ | ❌ | ✅ | ✅ |
+| 命格 | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+**两条可见性路径**：
+1. **同岗共事**：NPC 与玩家在同一岗位/地块共事足够久 → 逐步揭示该 NPC 的特质详情和联动
+2. **知客专长**：有知客 NPC 任职足够久 → 可跨岗位查看其他 NPC 的特质（知客的本职就是管人）
+
+**当前实现状态**：特质名称/图标招募时已可见（表层）。特质联动详情、特质数值效果的可见性门控**尚未实现**——目前联动效果只在后台计算生效，UI 不展示。
+
+### 特质系统
+
+- **出身特质**（10 种）：每个 NPC 必有一个，加权随机（农民出身 30%，流浪汉 15%...）
+- **通用特质**（13 种）：0-2 个，如勤劳、懒惰、聪慧、铁骨、辨识草药等
+- **特质效果**：workSpeedBonus、farmingBonus、herbQualityBonus、pestEfficiency 等
+
+### 特质联动系统 ★ (v0.2)
+
+**设计原则（方案 B）**：联动修改**操作产出**，不影响**操作频率**（零性能压力）
+
+入选规则：NPC 同时拥有两个特定特质 → 触发联动效果。  
+定义位置：`src/data/traits.js` → `TRAIT_SYNERGIES`  
+计算位置：`Character.js` → `getSynergy*()` 方法链  
+应用位置：`FarmSystem.js` 的各项操作 + `Character.calculateOutput()`
+
+联动效果（14 条）：
+
+| 联动 | 特质组合 | 效果 |
+|------|----------|------|
+| 老农本色 | peasant + hardworking | 产出×1.10、耕种经验+30% |
+| 猎人体魄 | hunter + iron_body | 产出×1.08、除虫×1.5 |
+| 渔者之智 | fisherman + clever | 产出×1.05、浇水×1.3 |
+| 家学渊源 | scholar_family + clever | 产出×1.08、学习经验+30% |
+| 矿工体魄 | miner + iron_body | 产出×1.10 |
+| 草药大师 | herb_apprentice + herb_sense | 产出×1.08、灵草品质+15%、产量+10% |
+| 铁火淬炼 | blacksmith + hardworking | 产出×1.08、施肥×1.3 |
+| 江湖节省 | vagrant + frugal | 产出×1.05、食物消耗-15% |
+| 孤心归处 | orphan + loyal | 产出×1.10 |
+| 商贾之舌 | merchant + talkative | 产出×1.05 |
+| 勤智双全 | hardworking + clever | 产出×1.15（最强） |
+| 忠勤不怠 | loyal + hardworking | 产出×1.12 |
+| 铁骨勤劳 | iron_body + hardworking | 产出×1.12、除虫×1.5 |
+| 灵智识草 | clever + herb_sense | 产出×1.05、灵草品质+10% |
+
+**产出乘数覆盖的操作**：收获、浇水、施肥、除草、除虫、灵蛊除虫（共 6 种）
+
+### NPC 生命周期
+
+```
+招募（10选3，消耗食物）→ 分配农田/资源点 → 日常劳作（AI 自动）
+  ├─ 积累耕种经验 → 效率提升
+  ├─ 揭示发现层属性
+  ├─ 积累知客经验 → 提升招募信息可见性
+  └─ 每年年龄 +1 → 退休前 5 年开始效率下降 → 到达退休年龄后退出劳作
+```
+
+---
+
+## 🌱 农田系统
+
+### 状态机
+
+```
+空地 → 翻地 → 播种 → 生长 → 可收获 → (收获后回到空地)
+  ↑                ↓
+  └── 枯萎 ←──── 缺水/虫害严重
+```
+
+### 地块属性
+
+- **水分**：浇水 +30/tick，蒸发 -1.5/tick，低于 30 停止生长，低于 10 可能枯萎
+- **肥力**：基础 60-90 随机，种植消耗，施肥恢复，收获扣减
+- **杂草**：生长 +2/tick，超 40 开始减产，除草 -20
+- **虫害**：0.8%/tick 出现概率，严重度影响产量，除虫按 NPC 能力清除
+- **灵蛊**：0.5%/tick，灵草专属，比普通虫害更严重
+
+### NPC 劳作 AI 优先级
+
+```
+灵蛊除虫 > 除虫 > 收获 > 浇水 > 除草 > 施肥 > 翻地 > 播种
+```
+
+### 灵草系统
+
+- 额外有**灵气值**消耗，灵气不足时停止生长
+- 收获时根据灵气均值 + 病害状态计算品质（低/普通/中等/优良/极品）
+- **灵田升级**：普通田 → 灵田 1-3 级，消耗木材/石材/铁矿石/灵石
+
+---
+
+## 📜 司务堂系统
+
+建造后解锁（需要先招募村民 → 触发司务堂建造事件）。
+
+### 执事册（岗位研究）
+
+研究新岗位后可任命 NPC 担任：
+
+| 岗位 | 精力 | 说明 |
+|------|------|------|
+| 农夫 | 100%（独占） | 耕种农田 |
+| 知客 | 30% | 管理人事、招募 |
+| 房事 | 20% | 仓库管理（需先研究知客） |
+| 铁道 | 100%（独占） | 采矿冶炼（未实现产出） |
+| 妙手 | 100%（独占） | 炼丹（未实现产出） |
+
+### 功法帖（功法研究）
+
+研究功法 → NPC 学习 → 绑定个人 → 退休失效。7 种功法：
+
+| 功法 | 效果 | 研究/学习天数 |
+|------|------|---------------|
+| 翻土诀 | 耕种速度 +20% | 3/5 |
+| 施肥术 | 施肥效率 +30% | 5/7 |
+| 驱虫阵 | 虫害概率 -25% | 5/8 |
+| 灵植术 | 灵气回复 +15% | 8/12 |
+| 聚灵术 | 解锁灵田升级 | 6/8 |
+| 四季棚 | 冬季冻害免疫 | 10/15 |
+| 良种培育 | 产量 +15% | 12/18 |
+
+**导师系统**：已学会功法的 NPC 在同一地块时加速学习（+30~40%）
+
+---
+
+## ⛰️ 其他系统
+
+### 后山采集
+建造「后山小径」后解锁。2 个木材点 + 2 个石材点，NPC 分配后每天自动产出。效率受体质、年龄、特质影响。
+
+### 交通工具
+驴车(3人) → 马车(5人) → 牛车(7人)。影响招募最大载客量。升级消耗材料。
+
+### 建筑系统
+3 座可建造建筑：后山小径 / 大仓库 / 司务堂。消耗材料，有建造耗时（tick 推进）。
+
+### 招募系统
+亲自去（1天到+选人+1天回）或派人去（2天往返自动带回）。候选池 10 人，按知客等级决定信息可见性。
+
+### 存档系统
+3 个 localStorage 槽位。每 5 分钟自动存档（槽位 1）。手动存档/读档。
+
+### 音效系统
+Web Audio API 程序化音效 + BGM。无需外部音频文件。
+
+### 新手教程
+12 步引导：初次进入 → 种田 → 招募 → 建筑。
+
+---
+
+## 🔢 关键数值常量
+
+全部集中在 `src/engine/constants.js`，包括：
+
+- 时间：`TICKS_PER_DAY=10`, `DAYS_PER_SEASON=7`
+- 水源：`WATER_ADD_AMOUNT=30`, `WATER_EVAPORATION_RATE=1.5`
+- 肥力：`FERTILITY_BASE=60`, `FERTILITY_DRAIN_RATE=0.2`
+- 虫害：`PEST_SPAWN_CHANCE=0.008`, `PEST_INITIAL_SEVERITY_MIN=3`
+- 杂草：`WEED_GROWTH_BASE=2`, `WEED_THRESHOLD=40`
+- 招募：`RECRUIT_POOL_SIZE=10`, `RECRUIT_FOOD_COST=10`
+- 开垦：`FARM_EXPAND_TICKS=50`
+- 冬季：`WINTER_FREEZE_CHANCE=0.1`
+
+---
+
+## 🚧 开发状态
+
+### ✅ 已实现且可玩
+
+- [x] 完整农耕循环（翻地→播种→生长→收获）
+- [x] NPC 招募 + 特质系统 + 命格系统
+- [x] NPC 自动劳作 AI（优先级驱动）
+- [x] **特质联动系统**（14 条联动规则，后台生效）
+- [x] 灵草种植 + 灵田升级
+- [x] 司务堂（岗位研究 + 功法研究/学习）
+- [x] 后山采集
+- [x] 建筑系统（3 座建筑）
+- [x] 交通工具升级
+- [x] 四季 + 年龄 + 退休
+- [x] 存档/读档 (localStorage)
+- [x] 音效 + BGM
+- [x] 新手教程（12 步）
+- [x] 属性揭示系统
+- [x] 知客（HR）等级系统
+
+### 🔶 有骨架但未接入
+
+- [ ] 铁道岗位实际产出（采矿）
+- [ ] 妙手岗位实际产出（炼丹）
+- [ ] 房事岗位实际效果（仓库管理做了一半）
+- [ ] **信息可见性门控**：特质详情/联动效果 UI 展示 + 角色/岗位权限控制
+- [ ] 采集系统接入特质联动乘数
+
+### 🔴 `_planned/` 遗留（旧文明策略代码）
+
+`src/data/_planned/` 和 `src/components/_planned/` 中的文件来自早期的 Paradox-like 文明策略设计，引用了不存在的 state 字段（gold/happiness 等），**不可直接使用**，需要整体重写后才能接入。
+
+### 🔴 `_planned/` 遗留（旧文明策略代码）
+
+`src/data/_planned/` 和 `src/components/_planned/` 中的文件来自早期的 Paradox-like 文明策略设计，引用了不存在的 state 字段（gold/happiness 等），**不可直接使用**，需要整体重写后才能接入。
+
+---
+
+## 🗺️ 未来规划
+
+### P0 — 信息可见性（配合设计原则）
+
+| 任务 | 说明 |
+|------|------|
+| **特质揭示系统** | 同岗共事 N 天后揭示该 NPC 的特质数值效果和联动详情 |
+| **知客感知系统** | 高级知客可跨岗位查看 NPC 特质（知客本职） |
+| **UI 信息分层** | CharacterPanel 根据玩家身份动态决定显示哪些信息 |
+| 采集接入联动 | `_getGatherEfficiency()` 加上 `getSynergyOutputMultiplier()` |
+
+### P1 — 完善司务堂闭环
+
+| 任务 | 说明 |
+|------|------|
+| 铁道产出 | 分配 NPC 后每天产出铁矿石 |
+| 妙手产出 | 消耗草药 + 时间 → 产出丹药 |
+| 房事效果 | 仓库管理岗的实际 buff（扩容/减耗） |
+
+### P2 — 玩法深度
+
+| 任务 | 说明 |
+|------|------|
+| 交易系统 | 行商定期来访，买卖物资 |
+| 事件扩展 | 瘟疫、丰收、访客、盗贼 |
+| 多季作物 | 不同作物适应不同季节 |
+| 冬季策略 | 冬小麦、囤粮、暖棚之外的选择 |
+
+### P3 — 长期
+
+| 任务 | 说明 |
+|------|------|
+| 胜利条件 | 人口/财富/自给自足 |
+| NPC 关系 | 合作/冲突/师徒/家族 |
+| 村庄里程碑 | 从小地块到正式村庄 |
+| 功法扩展 | 与信息可见性挂钩的感知类功法 |
+
+---
+
+## 🚀 运行
+
+```bash
+cd F:\streetLightSimulator\civ-strategy
+npm install
+npm run dev      # 开发模式 (localhost:5173)
+npm run build    # 生产构建 → dist/
+npm run preview  # 预览生产构建
+```
+
+**技术栈**：React 19 + Vite 8 + Tailwind CSS 4 + Lucide React 图标  
+**构建输出**：~400KB JS + ~76KB CSS (gzip 后 ~119KB + ~11KB)  
+**部署**：GitHub Pages，路径 `/civ-strategy/`
+
+---
+
+## ⚠️ 开发注意事项
+
+1. **GameState.tick() 是全游戏的主心脏**——每次 tick 按固定顺序执行所有系统，修改顺序要小心副作用
+2. **特质联动缓存**：`Character._synergyCache` 是惰性求值的，如果在运行时修改 traits 数组，需调用 `invalidateSynergyCache()` 清缓存（当前 traits 不变，所以不触发）
+3. **`_planned/` 是禁区**：不要引用、不要导入、不要"稍微修一下就想集成"，那些文件引用的是不存在的 API
+4. **FarmSystem 和 GameState 是两个最大的文件**（分别 35K/42K），新增系统建议独立成新文件
+5. **存档兼容**：修改 Character/FarmSystem 数据结构时要同步更新 `toJSON()` 和 `fromJSON()`
+6. **数值平衡**：所有可调参数在 `constants.js` 中，调参不需要改逻辑代码
+
+---
+
+*路灯助手维护 · 2026-04-29*

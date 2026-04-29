@@ -3,7 +3,9 @@ import { BASE_ATTRIBUTES, KNOWLEDGE_ATTRIBUTES, getMoodInfo } from '../engine/Ch
 import { getRoleInfo } from '../data/roles';
 import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
-import { User, Lock, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { getActiveSynergies } from '../data/traits';
+import { TRAIT_INSIGHT_THRESHOLD } from '../engine/constants';
+import { User, Lock, HelpCircle, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 
 function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) {
   return (
@@ -17,6 +19,74 @@ function AttributeBar({ name, value, maxValue = 100, icon, color = '#f59e0b' }) 
         />
       </div>
       <span className="text-xs text-stone-500 w-6 text-right tabular-nums">{Math.floor(value)}</span>
+    </div>
+  );
+}
+
+function TraitSection({ character }) {
+  const traits = character.traits || [];
+  if (traits.length === 0) {
+    return <p className="text-[10px] text-stone-600 italic">暂无特质</p>;
+  }
+
+  // 玩家永远看自己 / 司录身份可看全部
+  const isSelf = character.isPlayer;
+  const canSeeAll = isSelf || character.canSeeAttributes?.();
+  const vis = canSeeAll
+    ? { namesOnly: false, details: true, synergies: true }
+    : (character.getTraitVisibility?.() || { namesOnly: true, details: false, synergies: false });
+
+  const traitIds = traits.map(t => t.id);
+  const activeSynergies = vis.synergies ? getActiveSynergies(traitIds) : [];
+
+  return (
+    <div className="space-y-2">
+      {/* 特质标签 */}
+      <div className="flex flex-wrap gap-1.5">
+        {traits.map(trait => (
+          <span
+            key={trait.id}
+            className="text-[10px] px-1.5 py-0.5 bg-purple-900/40 text-purple-300 rounded border border-purple-700/30"
+            title={vis.details ? trait.description : '共事足够久后才能了解详情'}
+          >
+            {trait.icon} {trait.name}
+          </span>
+        ))}
+      </div>
+
+      {/* 特质详情 (需揭示) */}
+      {!vis.details && !isSelf && (
+        <div className="flex items-center gap-1.5 text-[10px] text-stone-600">
+          <EyeOff size={10} />
+          <span>共事 {Math.ceil((TRAIT_INSIGHT_THRESHOLD - (character.playerTraitInsight || 0)) / 10)} 天后揭示详情</span>
+        </div>
+      )}
+
+      {vis.details && (
+        <div className="space-y-1">
+          {traits.map(trait => (
+            <div key={trait.id} className="text-[10px] text-stone-400 pl-1">
+              <span className="text-purple-300">{trait.icon} {trait.name}</span>
+              <span className="text-stone-500"> — {trait.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 特质联动 (需揭示) */}
+      {vis.synergies && activeSynergies.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-stone-700/50">
+          <div className="text-[10px] text-amber-400 font-medium mb-1">⚡ 特质联动</div>
+          <div className="space-y-1">
+            {activeSynergies.map(syn => (
+              <div key={syn.id} className="text-[10px] text-amber-300/80 pl-1">
+                <span>{syn.icon} {syn.name}</span>
+                <span className="text-stone-500"> — {syn.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -173,6 +243,13 @@ function CharacterCard({ character, expanded, onToggle }) {
             ) : (
               <p className="text-[10px] text-stone-600 italic">尚无执事岗位与功法修习</p>
             )}
+          </div>
+          {/* 特质信息 */}
+          <div className="mt-3 rounded-lg border border-stone-700/50 bg-stone-900/30 p-3">
+            <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-stone-700/50">
+              <span className="text-xs font-medium text-purple-400">🧬 特质</span>
+            </div>
+            <TraitSection character={character} />
           </div>
         </div>
       )}
