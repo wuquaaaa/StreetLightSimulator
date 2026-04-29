@@ -49,7 +49,6 @@ export const SaveSystem = {
       buildQueue: game.buildQueue || [],
       // 司务堂
       hallBuilt: game.hallBuilt || false,
-      hallBuildProgress: game.hallBuildProgress || null,
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
       // 后山采集系统
@@ -131,10 +130,8 @@ export const SaveSystem = {
 
     // 司务堂（旧存档如果研究已解锁则视为已建好）
     game.hallBuilt = data.hallBuilt || false;
-    game.hallBuildProgress = data.hallBuildProgress || null;
     if (data.researchSystem && data.researchSystem.unlocked) {
       game.hallBuilt = true;
-      game.hallBuildProgress = null;
     }
 
     // 研究系统

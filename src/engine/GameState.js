@@ -98,8 +98,7 @@ export class GameState {
     this.buildQueue = [];      // 建造队列 [{ buildingId, progress, totalTicks, story }]
 
     // 司务堂建造状态
-    this.hallBuilt = false;           // 司务堂是否已建造
-    this.hallBuildProgress = null;    // 建造进度 { progress: number, totalTicks: number }
+    this.hallBuilt = false;           // 司务堂是否已建造（由 research_hall 的 onBuilt 设置）
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -288,22 +287,7 @@ export class GameState {
       this.gatherSystem.tick(isNewDay, allChars, this.warehouse, (msg) => this.addLog(msg));
     }
 
-    // 司务堂建造进度
-    if (this.hallBuildProgress) {
-      this.hallBuildProgress.progress++;
-      if (this.hallBuildProgress.progress >= this.hallBuildProgress.totalTicks) {
-        this.hallBuildProgress = null;
-        this.hallBuilt = true;
-        this.researchSystem.unlock();
-        // 给予玩家司录身份
-        if (!this.player.roles.includes('silu')) {
-          this.player.roles.push('silu');
-        }
-        this.addLog('司务堂落成！你获得了「司录」身份，可以参悟岗位和功法了。');
-      }
-    }
-
-    // 建筑建造队列进度
+    // 建筑建造队列进度（所有建筑统一走此队列，包括司务堂）
     if (this.buildQueue.length > 0) {
       const currentBuild = this.buildQueue[0];
       currentBuild.progress++;
@@ -673,6 +657,11 @@ export class GameState {
         break;
       }
 
+      // ====== 建造司务堂（转发到 start_build）======
+      case 'build_hall':
+        params = { ...params, buildingId: 'research_hall' };
+        // fall through to start_build
+
       // ====== 通用建筑建造 ======
       case 'start_build': {
         const { buildingId } = params;
@@ -723,45 +712,7 @@ export class GameState {
         break;
       }
 
-      // ====== 建造司务堂（兼容旧入口）======
-      case 'build_hall': {
-        if (this.hallBuilt) {
-          result = { success: false, message: '司务堂已经建好了' };
-          break;
-        }
-        if (this.hallBuildProgress) {
-          result = { success: false, message: '司务堂正在建造中...' };
-          break;
-        }
-        // 建造材料：木材30 + 石材15
-        const HALL_COSTS = [
-          { category: 'material', itemId: 'lumber', name: '木材', amount: 30 },
-          { category: 'material', itemId: 'stone', name: '石材', amount: 15 },
-        ];
-        const hallLacks = [];
-        for (const cost of HALL_COSTS) {
-          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
-          if (have < cost.amount) {
-            hallLacks.push(`${cost.name}(${have}/${cost.amount})`);
-          }
-        }
-        if (hallLacks.length > 0) {
-          result = { success: false, message: `材料不足：${hallLacks.join('、')}` };
-          break;
-        }
-        // 消耗材料
-        for (const cost of HALL_COSTS) {
-          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
-        }
-        // 开始建造（3天）
-        const hallBuildTicks = 3 * TICKS_PER_DAY;
-        this.hallBuildProgress = { progress: 0, totalTicks: hallBuildTicks };
-        this.addLog('你开始建造司务堂……预计需要 3 天。');
-        result = { success: true, message: '开始建造司务堂' };
-        break;
-      }
-
-      // ====== 司务堂（研究系统） actions ======
+      // ====== 司务堂（研究系统）actions ======
       case 'research_post': {
         // 研究解锁岗位
         if (!this.researchSystem.unlocked) {
