@@ -599,10 +599,38 @@ export class GameState {
       }
 
       case 'expand_farm': {
-        // 手动开垦也走耗时队列（玩家开垦）
+        // 农民队长：优先指派空闲 NPC 去开垦
+        if (this.player.hasRole('farmer_leader')) {
+          const allFarmers = this._getAllFarmers();
+          const busyIds = new Set(this.farm.expandQueue.map(q => q.characterId));
+          const idleNPC = allFarmers.find(f =>
+            !f.isPlayer && !f.isRetired && !busyIds.has(f.id)
+            && this.farm.getPlotsForCharacter(f.id).length === 0
+            && !this.recruitingNPCIds.has(f.id)
+          );
+          if (idleNPC) {
+            result = this.farm.startExpand(idleNPC.id);
+            if (result.success) {
+              this.addLog(`${idleNPC.name}开始开垦新农田……`);
+            }
+            break;
+          }
+          // 没有空闲 NPC → 尝试玩家亲自上
+          if (this.isPlayerAway) {
+            result = { success: false, message: '没有空闲农民，你又在路上，暂时无法开垦' };
+            break;
+          }
+          // 玩家亲自上
+        }
+
+        // 普通农民：自己开垦（不能同时开垦多块）
+        if (this.isPlayerAway) {
+          result = { success: false, message: '你正在去村庄的路上，无法开垦' };
+          break;
+        }
         const existingPlayerExpand = this.farm.expandQueue.find(q => q.characterId === this.player.id);
         if (existingPlayerExpand) {
-          result = { success: false, message: '你已在开垦中' };
+          result = { success: false, message: '你已在开垦中，增加目标农田数后可自动指派 NPC' };
           break;
         }
         result = this.farm.startExpand(this.player.id);
