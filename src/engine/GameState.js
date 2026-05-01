@@ -12,6 +12,7 @@ import { FoodSystem } from './FoodSystem';
 import { EventSystem } from './EventSystem';
 import { ResearchSystem } from './ResearchSystem';
 import { GatherSystem } from './GatherSystem';
+import { MiningSystem } from './MiningSystem';
 import { NPC_NAMES, generateName, generateAppearance } from '../data/names';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
@@ -71,6 +72,7 @@ export class GameState {
     this.eventSystem = new EventSystem();
     this.researchSystem = new ResearchSystem();
     this.gatherSystem = new GatherSystem();
+    this.miningSystem = new MiningSystem();
 
     // 事件系统（委托给 EventSystem，保留引用兼容旧存档）
     this.triggeredEvents = this.eventSystem.triggeredEvents;
@@ -286,6 +288,9 @@ export class GameState {
       const allChars = [this.player, ...this.characters];
       this.gatherSystem.tick(isNewDay, allChars, this.warehouse, (msg) => this.addLog(msg));
     }
+
+    // 铁道采矿系统 tick（每天产出铁矿石）
+    this.miningSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
 
     // 建筑建造队列进度（所有建筑统一走此队列，包括司务堂）
     if (this.buildQueue.length > 0) {

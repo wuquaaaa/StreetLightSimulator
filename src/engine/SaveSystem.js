@@ -6,6 +6,7 @@
 
 import { ResearchSystem } from './ResearchSystem';
 import { GatherSystem } from './GatherSystem';
+import { MiningSystem } from './MiningSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -17,7 +18,7 @@ export const SaveSystem = {
    */
   serialize(game) {
     const data = {
-      version: 4,
+      version: 5,
       timestamp: Date.now(),
       day: game.day,
       tickCount: game.tickCount,
@@ -53,6 +54,8 @@ export const SaveSystem = {
       researchSystem: game.researchSystem.toJSON(),
       // 后山采集系统
       gatherSystem: game.gatherSystem.toJSON(),
+      // 铁道采矿系统
+      miningSystem: game.miningSystem.toJSON(),
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -146,6 +149,11 @@ export const SaveSystem = {
     // 兼容旧存档：如果已建造 mountain_trail 但没有 gatherSystem 数据，解锁采集
     if (game.buildings.includes('mountain_trail') && !game.gatherSystem.unlocked) {
       game.gatherSystem.unlocked = true;
+    }
+
+    // 铁道采矿系统
+    if (data.miningSystem) {
+      game.miningSystem = MiningSystem.fromJSON(data.miningSystem);
     }
 
     // v4 迁移：统一 itemId 'wood' → 'lumber'
