@@ -66,10 +66,7 @@ src/
 │   ├── hr-levels.js       # 知客等级（招募可见性）
 │   ├── gather-nodes.js    # 后山资源点定义
 │   ├── roles.js           # 角色身份显示信息
-│   ├── technologies.js    # 科技树（未集成到当前玩法）
-│   └── _planned/          # 预留但未集成的数据（文明策略遗留）
-│       ├── events.js      # 13个事件定义（condition 引用了不存在的字段，需重写）
-│       └── buildings.js   # 22种建筑（引用旧科技ID，需重写）
+│   └── technologies.js    # 科技树（未集成到当前玩法）
 │
 ├── components/           # React UI 层
 │   ├── GameApp.jsx        # 主容器：tick 定时器 + tab 路由 + 存档调度
@@ -86,14 +83,7 @@ src/
 │   ├── EventPopup.jsx     # 事件弹窗
 │   ├── SaveLoadPanel.jsx  # 存档/读档面板
 │   ├── TutorialOverlay.jsx# 新手教程（12步引导）
-│   ├── NotificationPopup.jsx
-│   └── _planned/          # 预留但未集成的组件（旧文明策略遗留）
-│       ├── DiplomacyPanel.jsx
-│       ├── MilitaryPanel.jsx
-│       ├── EconomyPanel.jsx
-│       ├── PopulationPanel.jsx
-│       ├── OverviewPanel.jsx
-│       └── TechPanel.jsx
+│   └── NotificationPopup.jsx
 ```
 
 ---
@@ -137,7 +127,7 @@ src/
 1. **同岗共事**：NPC 与玩家在同一岗位/地块共事足够久 → 逐步揭示该 NPC 的特质详情和联动
 2. **知客专长**：有知客 NPC 任职足够久 → 可跨岗位查看其他 NPC 的特质（知客的本职就是管人）
 
-**当前实现状态**：特质名称/图标招募时已可见（表层）。特质联动详情、特质数值效果的可见性门控**尚未实现**——目前联动效果只在后台计算生效，UI 不展示。
+**当前实现状态**：特质名称/图标招募时已可见（表层）。特质详情和联动效果通过 `_tickTraitInsight()` 逐步揭示——同岗共事或高级知客感知均可推进洞察进度，UI 已有三层显示（标签/详情/联动）。
 
 ### 特质系统
 
@@ -312,35 +302,27 @@ Web Audio API 程序化音效 + BGM。无需外部音频文件。
 - [x] 新手教程（12 步）
 - [x] 属性揭示系统
 - [x] 知客（HR）等级系统
+- [x] 信息可见性门控（特质揭示/联动 UI 分层）
+- [x] 采集系统接入特质联动乘数
 
 ### 🔶 有骨架但未接入
 
 - [ ] 铁道岗位实际产出（采矿）
 - [ ] 妙手岗位实际产出（炼丹）
 - [ ] 房事岗位实际效果（仓库管理做了一半）
-- [ ] **信息可见性门控**：特质详情/联动效果 UI 展示 + 角色/岗位权限控制
-- [ ] 采集系统接入特质联动乘数
-
-### 🔴 `_planned/` 遗留（旧文明策略代码）
-
-`src/data/_planned/` 和 `src/components/_planned/` 中的文件来自早期的 Paradox-like 文明策略设计，引用了不存在的 state 字段（gold/happiness 等），**不可直接使用**，需要整体重写后才能接入。
-
-### 🔴 `_planned/` 遗留（旧文明策略代码）
-
-`src/data/_planned/` 和 `src/components/_planned/` 中的文件来自早期的 Paradox-like 文明策略设计，引用了不存在的 state 字段（gold/happiness 等），**不可直接使用**，需要整体重写后才能接入。
 
 ---
 
 ## 🗺️ 未来规划
 
-### P0 — 信息可见性（配合设计原则）
+### ✅ 信息可见性（已实现）
 
 | 任务 | 说明 |
 |------|------|
-| **特质揭示系统** | 同岗共事 N 天后揭示该 NPC 的特质数值效果和联动详情 |
-| **知客感知系统** | 高级知客可跨岗位查看 NPC 特质（知客本职） |
-| **UI 信息分层** | CharacterPanel 根据玩家身份动态决定显示哪些信息 |
-| 采集接入联动 | `_getGatherEfficiency()` 加上 `getSynergyOutputMultiplier()` |
+| ~~特质揭示系统~~ | ✅ 同岗共事/知客感知双路径，`_tickTraitInsight()` 每天推进 |
+| ~~知客感知系统~~ | ✅ 熟络级知客（Lv2+）可跨岗位查看所有 NPC 特质 |
+| ~~UI 信息分层~~ | ✅ CharacterPanel 三层显示：标签/详情/联动 |
+| ~~采集接入联动~~ | ✅ `_getGatherEfficiency()` 已接入联动乘数 |
 
 ### P1 — 完善司务堂闭环
 
@@ -381,7 +363,7 @@ npm run preview  # 预览生产构建
 ```
 
 **技术栈**：React 19 + Vite 8 + Tailwind CSS 4 + Lucide React 图标  
-**构建输出**：~400KB JS + ~76KB CSS (gzip 后 ~119KB + ~11KB)  
+**构建输出**：~417KB JS + ~65KB CSS (gzip 后 ~124KB + ~11KB)  
 **部署**：GitHub Pages，路径 `/civ-strategy/`
 
 ---
@@ -390,11 +372,10 @@ npm run preview  # 预览生产构建
 
 1. **GameState.tick() 是全游戏的主心脏**——每次 tick 按固定顺序执行所有系统，修改顺序要小心副作用
 2. **特质联动缓存**：`Character._synergyCache` 是惰性求值的，如果在运行时修改 traits 数组，需调用 `invalidateSynergyCache()` 清缓存（当前 traits 不变，所以不触发）
-3. **`_planned/` 是禁区**：不要引用、不要导入、不要"稍微修一下就想集成"，那些文件引用的是不存在的 API
-4. **FarmSystem 和 GameState 是两个最大的文件**（分别 35K/42K），新增系统建议独立成新文件
-5. **存档兼容**：修改 Character/FarmSystem 数据结构时要同步更新 `toJSON()` 和 `fromJSON()`
-6. **数值平衡**：所有可调参数在 `constants.js` 中，调参不需要改逻辑代码
+3. **文件尺寸**：GameState.js (~956行/44KB)、FarmSystem.js (~758行/36KB) 是最大的两个文件。`doAction` 占 GameState 一半行数（~500行 switch）。**拆分策略**：不单独做大拆——每次实现新功能时顺势抽离相关逻辑到独立模块（例：加铁道产出时抽出 BuildManager）
+4. **存档兼容**：修改 Character/FarmSystem 数据结构时要同步更新 `toJSON()` 和 `fromJSON()`
+5. **数值平衡**：所有可调参数在 `constants.js` 中，调参不需要改逻辑代码
 
 ---
 
-*路灯助手维护 · 2026-04-29*
+*路灯助手维护 · 2026-05-02 (本次: 技术债清理 — 删除12个死文件, 修正README过时状态)*
