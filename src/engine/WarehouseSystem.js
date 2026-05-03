@@ -11,6 +11,8 @@
  * 货架命名：甲、乙、丙、丁...（天干编号）
  */
 
+import { FANGSHI_CAPACITY_BONUS } from './constants';
+
 // 专用仓库分类
 export const WAREHOUSE_CATEGORIES = {
   food:     { name: '食物', icon: '🍞', color: '#f59e0b' },
@@ -41,6 +43,16 @@ export class StorageShelf {
 
   get remaining() {
     return this.capacity - this.used;
+  }
+
+  getEffectiveCapacity(buffMultiplier = 0) {
+    if (buffMultiplier <= 0) return this.capacity;
+    return Math.floor(this.capacity * (1 + buffMultiplier));
+  }
+
+  getRemaining(buffMultiplier = 0) {
+    if (buffMultiplier <= 0) return this.remaining;
+    return Math.max(0, this.getEffectiveCapacity(buffMultiplier) - this.used);
   }
 
   hasItem(itemId) {
@@ -85,6 +97,9 @@ export class WarehouseSystem {
 
     // 房事 NPC 当前搬运任务
     this._fangshiTask = null;
+
+    // 房事被动 buff
+    this.fangshiActive = false;  // 房事 NPC 是否在职
   }
 
   /** 初始化公共仓库货架 */
@@ -139,12 +154,14 @@ export class WarehouseSystem {
   addItem(category, itemId, name, amount, meta = undefined) {
     let remaining = amount;
     const specialized = this.storage[category];
+    const fangshiBonus = this.fangshiActive ? FANGSHI_CAPACITY_BONUS : 0;
 
     // 先尝试专用仓库
     if (specialized && specialized.unlocked && specialized.level > 0) {
       for (const shelf of specialized.shelves) {
         if (remaining <= 0) break;
-        const take = Math.min(remaining, shelf.remaining);
+        const avail = fangshiBonus > 0 ? shelf.getRemaining(fangshiBonus) : shelf.remaining;
+        const take = Math.min(remaining, avail);
         if (take <= 0) continue;
         this._putOnShelf(shelf, itemId, name, take, category, meta);
         remaining -= take;
@@ -155,7 +172,8 @@ export class WarehouseSystem {
     if (remaining > 0) {
       for (const shelf of this.common.shelves) {
         if (remaining <= 0) break;
-        const take = Math.min(remaining, shelf.remaining);
+        const avail = fangshiBonus > 0 ? shelf.getRemaining(fangshiBonus) : shelf.remaining;
+        const take = Math.min(remaining, avail);
         if (take <= 0) continue;
         this._putOnShelf(shelf, itemId, name, take, category, meta);
         remaining -= take;

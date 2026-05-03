@@ -143,6 +143,10 @@ export const SPIRIT_PLOT_UPGRADE_COSTS = {
 // 铁道采矿单NPC基础日产量（铁矿石/天）
 export const MINING_BASE_YIELD = 2;
 
+// 房事岗位被动效果
+export const FANGSHI_CAPACITY_BONUS = 0.25;       // 货架容量 +25%
+export const FANGSHI_CONSUMPTION_REDUCTION = 0.1;  // 每日食物消耗 -10%
+
 // 灵田等级效果（index 0 = 普通田，1-3 = 灵田1-3级）
 // auraRegenMultiplier: 灵气回复速率乘数（基于 SPIRIT_AURA_REGEN_RATE）
 // auraRegenIdleMultiplier: 空置灵气回复乘数

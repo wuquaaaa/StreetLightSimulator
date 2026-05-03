@@ -20,14 +20,15 @@ export class FoodSystem {
    * 每日食物消耗
    * @param {WarehouseSystem} warehouse - 仓库系统
    * @param {Character} player - 玩家角色
+   * @param {number} [consumptionMultiplier=1] - 消耗乘数（<1 表示减免）
    * @returns {{ logs: string[], notifications: string[], moodDelta: number }}
    */
-  consumeDaily(warehouse, player) {
+  consumeDaily(warehouse, player, consumptionMultiplier = 1) {
     const logs = [];
     const notifications = [];
     let moodDelta = 0;
 
-    const needed = this.dailyConsumption;
+    const needed = Math.ceil(this.dailyConsumption * consumptionMultiplier);
     const wheatAmount = warehouse.getItemAmount('food', 'wheat');
 
     if (wheatAmount >= needed) {

@@ -25,6 +25,7 @@ import {
   RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
   RECRUIT_RETURN_TICKS, HR_EXP_PER_TICK,
   TRAIT_INSIGHT_PER_DAY, ZHIIKE_INSIGHT_BONUS_LEVEL,
+  FANGSHI_CONSUMPTION_REDUCTION,
 } from './constants';
 import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
 import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
@@ -200,8 +201,9 @@ export class GameState {
         this.addNotification('tutorial:build');
       }
 
-      // 食物消耗
-      const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player);
+      // 食物消耗（房事 NPC 可减免）
+      const consumptionMul = this.warehouse.fangshiActive ? (1 - FANGSHI_CONSUMPTION_REDUCTION) : 1;
+      const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player, consumptionMul);
       foodResult.logs.forEach(msg => this.addLog(msg));
       foodResult.notifications.forEach(msg => this.addNotification(msg));
       if (foodResult.moodDelta !== 0) {
@@ -273,8 +275,9 @@ export class GameState {
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
-    // 房事 NPC 自动整理货架（逐 tick 搬运，耗时取决于 NPC 速度）
+    // 房事 NPC：被动 buff + 自动整理货架
     const fangshiNPC = this.characters.find(c => !c.isRetired && c.hasPost('fangshi'));
+    this.warehouse.fangshiActive = !!fangshiNPC;
     if (fangshiNPC) {
       const speed = fangshiNPC.getFarmWorkSpeed?.() || 1;
       const result = this.warehouse.tickFangshi(speed);
