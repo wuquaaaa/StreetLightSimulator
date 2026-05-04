@@ -769,6 +769,23 @@ export class GameState {
           break;
         }
         result = targetChar.assignPost(postId);
+        if (result.success) {
+          const postInfo = getPostInfo(postId);
+          // 独占生产岗位（铁道/妙手）→ 解除农田分配
+          if (postInfo?.exclusive && postInfo?.category === 'production') {
+            const plots = this.farm.getPlotsForCharacter(characterId);
+            for (const p of plots) {
+              this.farm.unassignPlot(p.id, characterId);
+            }
+            // 解除后山采集
+            for (const node of this.gatherSystem.nodes || []) {
+              this.gatherSystem.unassignNode(node.id, characterId);
+            }
+            if (plots.length > 0) {
+              this.addLog(`${targetChar.name}不再耕种，转为${postInfo.name}`);
+            }
+          }
+        }
         break;
       }
       case 'remove_post': {

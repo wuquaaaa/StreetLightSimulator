@@ -11,6 +11,7 @@
 import {
   NPC_FERTILITY_THRESHOLD, HR_EXP_PER_TICK,
 } from './constants';
+import { getPostInfo } from '../data/posts';
 
 export class NPCAISystem {
   /**
@@ -23,6 +24,11 @@ export class NPCAISystem {
   tickAutoWork(npcs, farm, warehouse, logFn) {
     for (const npc of npcs) {
       if (!npc.hasRole('farmer')) continue;
+      // 独占生产岗位（铁道/妙手）不由农田 AI 驱动
+      if (npc.posts.some(p => {
+        const info = getPostInfo?.(p);
+        return info?.exclusive && info?.category === 'production';
+      })) continue;
       // 检查是否在开垦
       if (farm.expandQueue.find(q => q.characterId === npc.id)) continue;
 
