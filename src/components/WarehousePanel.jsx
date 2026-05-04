@@ -1,6 +1,26 @@
 import { useState, useCallback } from 'react';
 import { Package, ArrowUpCircle, GripVertical } from 'lucide-react';
 
+// 物品图标映射
+const ITEM_ICONS = {
+  wheat: '🌾', wheat_seed: '🌱',
+  wood: '🪵', lumber: '🪵', stone: '🪨', iron_ore: '⛏️',
+  spirit_stone: '💎',
+  herb_root: '🌿', herb_leaf: '🍃', herb_flower: '🌸',
+  pill_heal: '💊', pill_buff: '🧪',
+};
+function getItemIcon(itemId, item) {
+  if (ITEM_ICONS[itemId]) return ITEM_ICONS[itemId];
+  // fallback: 按分类
+  if (item.category === 'food') return '🍞';
+  if (item.category === 'herb') return '🌿';
+  if (item.category === 'mineral') return '⛏️';
+  if (item.category === 'material') return '🪵';
+  if (item.category === 'seed') return '🌱';
+  if (item.category === 'tool') return '🔧';
+  return '📦';
+}
+
 // ======================================================
 // ShelfRow — 单个货架（支持拖拽放入）
 // ======================================================
@@ -78,6 +98,7 @@ function ShelfRow({ shelf, isFangshi, onDragStart, onDrop }) {
             >
               <div className="flex items-center gap-1">
                 {isFangshi && <GripVertical size={10} className="text-stone-600" />}
+                <span>{getItemIcon(itemId, item)}</span>
                 <span>{item.name}</span>
               </div>
               <span className="text-amber-400 font-mono">{item.amount}</span>
