@@ -7,6 +7,7 @@
 import { ResearchSystem } from './ResearchSystem';
 import { GatherSystem } from './GatherSystem';
 import { MiningSystem } from './MiningSystem';
+import { AlchemySystem } from './AlchemySystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -56,6 +57,8 @@ export const SaveSystem = {
       gatherSystem: game.gatherSystem.toJSON(),
       // 铁道采矿系统
       miningSystem: game.miningSystem.toJSON(),
+      // 妙手炼丹系统
+      alchemySystem: game.alchemySystem.toJSON(),
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -154,6 +157,11 @@ export const SaveSystem = {
     // 铁道采矿系统
     if (data.miningSystem) {
       game.miningSystem = MiningSystem.fromJSON(data.miningSystem);
+    }
+
+    // 妙手炼丹系统
+    if (data.alchemySystem) {
+      game.alchemySystem = AlchemySystem.fromJSON(data.alchemySystem);
     }
 
     // v4 迁移：统一 itemId 'wood' → 'lumber'
