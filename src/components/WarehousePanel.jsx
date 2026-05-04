@@ -153,7 +153,7 @@ function WarehouseCard({ name, icon, level, shelves, totalUsed, totalCapacity, i
       <div className="mb-3">
         <div className="flex justify-between text-xs text-stone-400 mb-1">
           <span>总容量</span>
-          <span>{totalUsed} / {totalCapacity}</span>
+          <span>{totalUsed} / {totalCapacity}{isFangshi ? ` (+${Math.floor(totalCapacity * 0.25)})` : ''}</span>
         </div>
         <div className="w-full h-2 bg-stone-700 rounded-full overflow-hidden">
           <div
@@ -207,6 +207,15 @@ export default function WarehousePanel({ game, onAction }) {
           </span>
         )}
       </div>
+      {isFangshi && (
+        <div className="flex items-center gap-2 mb-3 text-xs text-purple-300/70">
+          <span>🏪 房事在岗</span>
+          <span className="text-stone-600">|</span>
+          <span>📦 容量 +25%</span>
+          <span className="text-stone-600">|</span>
+          <span>🍞 食物消耗 -10%</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 公共仓库 */}
