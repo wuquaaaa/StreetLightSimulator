@@ -9,7 +9,8 @@ let sfxGain = null;
 let bgmPlaying = false;
 let bgmTimeout = null;
 
-function getCtx() {
+// 全局首交互恢复 AudioContext
+function _ensureAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     bgmGain = audioCtx.createGain();
@@ -19,6 +20,22 @@ function getCtx() {
     sfxGain.gain.value = 0.25;
     sfxGain.connect(audioCtx.destination);
   }
+}
+
+// 注册全局首交互恢复（必须放在模块顶层，确保在首交互前注册）
+if (typeof document !== 'undefined') {
+  const _resumeOnInteract = () => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  };
+  document.addEventListener('click', _resumeOnInteract, { once: false });
+  document.addEventListener('touchstart', _resumeOnInteract, { once: false });
+  document.addEventListener('keydown', _resumeOnInteract, { once: false });
+}
+
+function getCtx() {
+  _ensureAudioContext();
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -178,12 +195,13 @@ function playBGMNote(index) {
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.value = note.freq;
+    const baseVol = bgmGain ? bgmGain.gain.value : 0.12;
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(bgmGain.gain.value * 0.5, ctx.currentTime + 0.05);
-    gain.gain.linearRampToValueAtTime(bgmGain.gain.value * 0.3, ctx.currentTime + note.dur * 0.6);
+    gain.gain.linearRampToValueAtTime(baseVol * 0.5, ctx.currentTime + 0.05);
+    gain.gain.linearRampToValueAtTime(baseVol * 0.3, ctx.currentTime + note.dur * 0.6);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.dur);
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(bgmGain || ctx.destination);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + note.dur);
 
@@ -194,10 +212,10 @@ function playBGMNote(index) {
       osc2.type = 'sine';
       osc2.frequency.value = note.freq / 2;
       gain2.gain.setValueAtTime(0, ctx.currentTime);
-      gain2.gain.linearRampToValueAtTime(bgmGain.gain.value * 0.15, ctx.currentTime + 0.05);
+      gain2.gain.linearRampToValueAtTime(baseVol * 0.15, ctx.currentTime + 0.05);
       gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.dur);
       osc2.connect(gain2);
-      gain2.connect(ctx.destination);
+      gain2.connect(bgmGain || ctx.destination);
       osc2.start(ctx.currentTime);
       osc2.stop(ctx.currentTime + note.dur);
     }
