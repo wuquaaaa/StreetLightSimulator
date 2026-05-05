@@ -7,7 +7,7 @@
  *   隐藏层：命格 —— 永远不可见，通过行为间接感知
  */
 
-import { TRAIT_EFFECT_KEYS } from '../data/traits';
+import { TRAIT_EFFECT_KEYS, getActiveSynergies } from '../data/traits';
 import { POSTS, getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
 import {
