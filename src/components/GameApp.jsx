@@ -73,6 +73,8 @@ export default function GameApp() {
         const eventType = eventNotifs[0].replace('event:', '');
         activeEventRef.current = eventType;
         setActiveEvent(eventType);
+        // 弹出后从队列移除，避免下个tick重复弹
+        g.notifications = g.notifications.filter(n => n !== eventNotifs[0]);
       }
 
       // 教程通知：自动清除，教程overlay自己处理展示
