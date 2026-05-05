@@ -439,6 +439,7 @@ export class FarmSystem {
   water(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
+    if (plot.waterLevel >= 100) return { success: false, message: '水分已满，无需浇水' };
     // 特质联动：浇水效果乘数（outputMultiplier × waterMultiplier）
     const synergyMul = (character.getSynergyOutputMultiplier?.() || 1) * (character.getSynergyWaterMultiplier?.() || 1);
     const addAmount = Math.round(WATER_ADD_AMOUNT * synergyMul);
@@ -494,6 +495,7 @@ export class FarmSystem {
   removeWeeds(plotId, character) {
     const plot = this.plots.find(p => p.id === plotId);
     if (!plot) return { success: false, message: '找不到农田' };
+    if (plot.weedGrowth <= 0) return { success: false, message: '没有杂草，无需除草' };
     // 特质联动：除草效果乘数
     const synergyMul = character.getSynergyOutputMultiplier?.() || 1;
     const removeAmount = Math.round(WEED_REMOVE_AMOUNT * synergyMul);
