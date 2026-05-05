@@ -8,6 +8,7 @@ import { ResearchSystem } from './ResearchSystem';
 import { GatherSystem } from './GatherSystem';
 import { MiningSystem } from './MiningSystem';
 import { AlchemySystem } from './AlchemySystem';
+import { EventSystem } from './EventSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -28,7 +29,7 @@ export const SaveSystem = {
       foodPerPerson: game.foodPerPerson,
       player: game.player.toJSON(),
       characters: game.characters.map(c => c.toJSON()),
-      triggeredEvents: { ...game.triggeredEvents },
+      eventSystem: game.eventSystem.toJSON(),
       farm: game.farm.toJSON(),
       warehouse: {
         common: {
@@ -90,10 +91,14 @@ export const SaveSystem = {
     game.foodPerPerson = data.foodPerPerson;
     game.player = GameState._charFromJSON(data.player);
     game.characters = (data.characters || []).map(c => GameState._charFromJSON(c));
-    // 触发事件状态：重新绑定引用，确保 game.triggeredEvents 与 eventSystem.triggeredEvents 指向同一对象
-    const restoredEvents = data.triggeredEvents || {};
-    game.triggeredEvents = restoredEvents;
-    game.eventSystem.triggeredEvents = restoredEvents;
+    // 事件系统
+    if (data.eventSystem) {
+      game.eventSystem = EventSystem.fromJSON(data.eventSystem);
+    } else if (data.triggeredEvents) {
+      // 兼容旧存档
+      game.eventSystem.triggeredEvents = data.triggeredEvents || {};
+    }
+    game.triggeredEvents = game.eventSystem.triggeredEvents;
     game.farm = GameState._farmFromJSON(data.farm);
     game.log = data.log || [];
 

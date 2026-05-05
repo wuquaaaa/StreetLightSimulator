@@ -72,6 +72,10 @@ export class GameState {
     this.npcAI = new NPCAISystem();
     this.foodSystem = new FoodSystem();
     this.eventSystem = new EventSystem();
+
+    // 事件临时 buff
+    this._seasonBuff = 1; // 丰收季产量乘数
+    this._freeRecruitAvailable = false; // 旅人免费招募
     this.researchSystem = new ResearchSystem();
     this.gatherSystem = new GatherSystem();
     this.miningSystem = new MiningSystem();
@@ -190,8 +194,34 @@ export class GameState {
       }
 
       // 事件检查
-      const eventNotifs = this.eventSystem.checkEvents(this.day);
+      const wheatCount = this.warehouse.getItemAmount('food', 'wheat');
+      const { notifications: eventNotifs, effects: eventEffects } = this.eventSystem.checkEvents(
+        this.day, this.season, this.population, wheatCount
+      );
       eventNotifs.forEach(n => this.addNotification(n));
+      for (const eff of eventEffects) {
+        this.addLog(eff.message);
+        if (eff.type === 'pest_outbreak') {
+          // 临时提高虫害概率（本 tick 生效）
+          for (const plot of this.farm.plots) {
+            if (plot.state === 'growing' && Math.random() < 0.3) {
+              plot.spawnPest?.();
+            }
+          }
+        }
+        if (eff.type === 'cold_snap') {
+          // 额外冻伤
+          const extra = this.farm.applyWinterDamage(eff.freezeChance);
+          if (extra > 0) this.addLog(`寒潮冻死了${extra}块作物...`);
+        }
+        if (eff.type === 'food_bonus') {
+          // 未来几次收获加成（通过全局buff）
+          this._seasonBuff = eff.multiplier;
+        }
+        if (eff.type === 'free_recruit') {
+          this._freeRecruitAvailable = true;
+        }
+      }
 
       // 教程延迟触发
       if (this.tutorialStep === 4 && this.day >= 3) {
