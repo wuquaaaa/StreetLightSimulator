@@ -438,7 +438,8 @@ export class GameState {
         break;
       }
       case 'recruit_reject':
-        this.addLog('你拒绝了来访者的请求。也许过些天还会有人来。');
+        this.triggeredEvents['recruit_cooldown_until'] = this.day + 30;
+        this.addLog('你拒绝了来访者的请求。大约30天后才会再有人来。');
         result = { success: true, message: '拒绝了招工请求' };
         break;
       case 'leader_recruit': {

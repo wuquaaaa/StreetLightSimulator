@@ -25,8 +25,10 @@ export class EventSystem {
     const notifications = [];
     const effects = [];
 
-    // === 招募事件（每10天，直到接受） ===
+    // === 招募事件（每10天，直到接受；拒绝后冷却30天） ===
     if (day >= 10 && day % 10 === 0 && this.triggeredEvents['recruit'] !== 'accepted') {
+      const cooldown = this.triggeredEvents['recruit_cooldown_until'] || 0;
+      if (day < cooldown) return { notifications, effects };
       if (this.triggeredEvents['recruit_last_day'] !== day) {
         this.triggeredEvents['recruit_last_day'] = day;
         notifications.push('event:recruit');
