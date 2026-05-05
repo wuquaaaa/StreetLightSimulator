@@ -603,6 +603,36 @@ export class GameState {
           result = { success: false, message: '无效的角色参数' };
         }
         break;
+      case 'dismiss_character': {
+        const char = this.characters.find(c => c.id === params.characterId);
+        if (!char) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        const charName = char.name;
+        // 解除所有地块分配
+        for (const plot of this.farm.plots) {
+          if (Array.isArray(plot.assignedTo)) {
+            plot.assignedTo = plot.assignedTo.filter(id => id !== char.id);
+          } else if (plot.assignedTo === char.id) {
+            plot.assignedTo = [];
+          }
+        }
+        // 取消开垦任务
+        this.farm.expandQueue = this.farm.expandQueue.filter(q => q.characterId !== char.id);
+        // 取消后山采集分配
+        if (this.gatherSystem) {
+          for (const node of this.gatherSystem.nodes || []) {
+            if (node.assignedTo === char.id) node.assignedTo = null;
+          }
+        }
+        // 移除角色
+        this.characters = this.characters.filter(c => c.id !== char.id);
+        this.addLog(`${charName}已被遣散。`);
+        this.player.changeMood(-3);
+        result = { success: true, message: `${charName}已遣散` };
+        break;
+      }
       case 'plow': {
         if (this.isPlayerAway) {
           result = { success: false, message: '你正在去村庄的路上，无法翻地' };

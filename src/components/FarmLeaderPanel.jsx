@@ -228,7 +228,7 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
 }
 
 // ========== 子面板：人员管理 ==========
-function PersonnelTab({ game }) {
+function PersonnelTab({ game, onAction }) {
   const farmers = game.characters.filter(c => c.hasRole('farmer'));
   const recruitingIds = game.recruitingNPCIds;
 
@@ -320,6 +320,16 @@ function PersonnelTab({ game }) {
               {farmer.appearance && (
                 <div className="text-[9px] text-stone-600 mt-0.5 italic">{farmer.appearance}</div>
               )}
+              {/* 遣散按钮（排除退休和招募中） */}
+              {!farmer.isRetired && !isRecruiting && (
+                <button
+                  onClick={() => onAction('dismiss_character', { characterId: farmer.id })}
+                  className="mt-1.5 w-full py-1 text-[9px] bg-red-950/30 hover:bg-red-900/40 text-red-500/70 hover:text-red-400 rounded transition-colors"
+                  title={`遣散${farmer.name}`}
+                >
+                  遣散
+                </button>
+              )}
             </div>
           );
         })}
@@ -360,7 +370,7 @@ export default function FarmLeaderPanel({ game, onAction }) {
         onAction={onAction}
       />
       <div className="mt-4">
-        <PersonnelTab game={game} />
+        <PersonnelTab game={game} onAction={onAction} />
       </div>
     </div>
   );
