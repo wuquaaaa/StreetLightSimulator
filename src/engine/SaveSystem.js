@@ -60,6 +60,8 @@ export const SaveSystem = {
       miningSystem: game.miningSystem.toJSON(),
       // 妙手炼丹系统
       alchemySystem: game.alchemySystem.toJSON(),
+      // 统计快照
+      statsHistory: game.statsHistory || [],
     };
     for (const [key, cat] of Object.entries(game.warehouse.storage)) {
       data.warehouse.storage[key] = {
@@ -168,6 +170,9 @@ export const SaveSystem = {
     if (data.alchemySystem) {
       game.alchemySystem = AlchemySystem.fromJSON(data.alchemySystem);
     }
+
+    // 统计快照
+    game.statsHistory = data.statsHistory || [];
 
     // v4 迁移：统一 itemId 'wood' → 'lumber'
     if (data.version < 4) {

@@ -15,7 +15,7 @@ import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain, FileDown } from 'lucide-react';
 import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
@@ -277,6 +277,27 @@ export default function GameApp() {
           >
             <Download size={18} />
             读档
+          </button>
+
+          <button
+            onClick={() => {
+              const g = gameRef.current;
+              const blob = new Blob([JSON.stringify({
+                meta: { day: g.day, season: g.season, population: g.population, exportedAt: new Date().toISOString() },
+                statsHistory: g.statsHistory,
+                log: g.log,
+              }, null, 2)], { type: 'application/json' });
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = 'streetlight-data-day' + g.day + '.json';
+              a.click();
+              sfxClick();
+            }}
+            className="flex flex-col items-center gap-1 py-3 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300 transition-colors"
+            title="导出统计数据"
+          >
+            <FileDown size={18} />
+            导出
           </button>
 
           <button

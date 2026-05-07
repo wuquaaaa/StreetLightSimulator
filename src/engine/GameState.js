@@ -76,6 +76,10 @@ export class GameState {
     // 事件临时 buff
     this._seasonBuff = 1; // 丰收季产量乘数
     this._freeRecruitAvailable = false; // 旅人免费招募
+
+    // 统计快照历史（每天一条，用于平衡分析）
+    this.statsHistory = [];
+
     this.researchSystem = new ResearchSystem();
     this.gatherSystem = new GatherSystem();
     this.miningSystem = new MiningSystem();
@@ -184,6 +188,9 @@ export class GameState {
     // 每 TICKS_PER_DAY 个 tick 算一天
     if (this.tickCount % TICKS_PER_DAY === 0) {
       this.day++;
+
+      // 每日快照统计
+      this.recordStats();
 
       // 季节
       const seasonIndex = Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length;
@@ -1187,6 +1194,38 @@ export class GameState {
   }
   addNotification(msg) { this.notifications.push(msg); }
   clearNotifications() { this.notifications = []; }
+
+  /**
+   * 记录每日快照，用于平衡分析和数据导出
+   */
+  recordStats() {
+    const plots = this.farm.plots;
+    if (plots.length === 0) return;
+    const snap = {
+      day: this.day,
+      tick: this.tickCount,
+      season: this.season,
+      population: this.population,
+      food: this.warehouse.getItemAmount('food', 'wheat'),
+      plots: plots.length,
+      avgWater: Math.round(plots.reduce((s, p) => s + p.waterLevel, 0) / plots.length),
+      avgFertility: Math.round(plots.reduce((s, p) => s + p.fertility, 0) / plots.length),
+      avgWeeds: Math.round(plots.reduce((s, p) => s + p.weedGrowth, 0) / plots.length),
+      pestCount: plots.filter(p => p.hasPest).length,
+      growingCount: plots.filter(p => p.state === 'growing' || p.state === 'planted').length,
+      readyCount: plots.filter(p => p.state === 'ready').length,
+      emptyCount: plots.filter(p => p.state === 'empty' || p.state === 'plowed' || p.state === 'withered').length,
+      spiritCount: plots.filter(p => p.isSpiritPlot()).length,
+      chars: this.characters.length,
+      avgMood: this.characters.length > 0
+        ? Math.round(this.characters.reduce((s, c) => s + c.mood, 0) / this.characters.length)
+        : 0,
+      avgFarming: this.characters.length > 0
+        ? Math.round(this.characters.reduce((s, c) => s + (c.knowledgeAttributes?.farming || 0), 0) / this.characters.length)
+        : 0,
+    };
+    this.statsHistory.push(snap);
+  }
 
   // ====== 存档系统（委托给 SaveSystem）======
   save(slot = 0) { return SaveSystem.save(this, slot); }
