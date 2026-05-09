@@ -197,7 +197,7 @@ export const SaveSystem = {
       const raw = localStorage.getItem(`${SAVE_KEY_PREFIX}${slot}`);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      if (!data || ![1, 2, 3, 4].includes(data.version)) return null;
+      if (!data || ![1, 2, 3, 4, 5].includes(data.version)) return null;
       return SaveSystem.restoreFromData(data, GameState);
     } catch {
       return null;
