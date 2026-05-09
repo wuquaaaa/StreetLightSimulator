@@ -272,13 +272,24 @@ function PersonnelTab({ game, onAction }) {
               : isRecruiting ? 'border-amber-700/50 bg-amber-900/10'
               : 'border-stone-700/30 bg-stone-900/30'
             }`}>
-              {/* 第一行：名字 + 心情 */}
+              {/* 第一行：名字 + 心情 + 遣散 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-stone-200">{farmer.name}</span>
                   <span className="text-xs text-stone-500">{genderIcon} {farmer.age}岁</span>
                 </div>
-                <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-base" style={{ color: moodInfo.color }} title={`心情: ${farmer.mood} ${moodInfo.text}`}>{moodInfo.icon}</span>
+                  {!isRecruiting && (
+                    <button
+                      onClick={() => onAction('dismiss_character', { characterId: farmer.id })}
+                      className="text-red-500/40 hover:text-red-400 transition-colors"
+                      title={`遣散${farmer.name}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* 第二行：特质标签 */}
@@ -316,16 +327,6 @@ function PersonnelTab({ game, onAction }) {
               {/* 外貌描述 */}
               {farmer.appearance && (
                 <div className="text-[9px] text-stone-600 mt-0.5 italic">{farmer.appearance}</div>
-              )}
-              {/* 遣散按钮（排除退休和招募中） */}
-              {!farmer.isRetired && !isRecruiting && (
-                <button
-                  onClick={() => onAction('dismiss_character', { characterId: farmer.id })}
-                  className="mt-1.5 w-full py-1 text-[9px] bg-red-950/30 hover:bg-red-900/40 text-red-500/70 hover:text-red-400 rounded transition-colors"
-                  title={`遣散${farmer.name}`}
-                >
-                  遣散
-                </button>
               )}
             </div>
           );
