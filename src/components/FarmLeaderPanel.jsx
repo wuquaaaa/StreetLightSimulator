@@ -76,7 +76,7 @@ function calcDailyYieldEstimate(plots) {
 // ========== 子面板：农田概览 ==========
 function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
   const plots = game.farm.plots;
-  const farmers = game.characters.filter(c => c.hasRole('farmer'));
+  const farmers = game.characters.filter(c => c.hasRole('farmer') && !c.isRetired);
   const expandQueue = game.farm.expandQueue;
   const targetCount = game.farm.targetPlotCount;
   const allChars = [game.player, ...game.characters];
@@ -229,7 +229,7 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
 
 // ========== 子面板：人员管理 ==========
 function PersonnelTab({ game, onAction }) {
-  const farmers = game.characters.filter(c => c.hasRole('farmer'));
+  const farmers = game.characters.filter(c => c.hasRole('farmer') && !c.isRetired);
   const recruitingIds = game.recruitingNPCIds;
 
   const assignedFarmerCount = new Set(game.farm.plots.flatMap(p =>
@@ -242,8 +242,6 @@ function PersonnelTab({ game, onAction }) {
     const isRecruiting = recruitingIds.has(f.id);
     return !hasPlots && !isExpanding && !isRecruiting;
   }).length;
-  const retiredCount = farmers.filter(f => f.isRetired).length;
-
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -256,7 +254,6 @@ function PersonnelTab({ game, onAction }) {
           在岗 <span className="text-green-400 font-bold">{assignedFarmerCount}</span>
           {' / '}
           空闲 <span className="text-stone-300 font-bold">{idleFarmers}</span>
-          {retiredCount > 0 && <>{' / '}<span className="text-stone-600">退休 {retiredCount}</span></>}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
