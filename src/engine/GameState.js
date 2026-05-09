@@ -630,7 +630,7 @@ export class GameState {
         // 取消后山采集分配
         if (this.gatherSystem) {
           for (const node of this.gatherSystem.nodes || []) {
-            if (node.assignedTo === char.id) node.assignedTo = null;
+            node.assignedTo = node.assignedTo.filter(id => id !== char.id);
           }
         }
         // 移除角色
