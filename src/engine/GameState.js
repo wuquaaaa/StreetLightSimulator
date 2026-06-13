@@ -1089,7 +1089,12 @@ export class GameState {
       trader: [],
       porter: [],
     };
+    // 保留农民队长身份（如果有NPC加入过）
+    const hadLeader = this.player.roles?.includes('farmer_leader');
     this.player.roles = [jobToRole[jobId] || 'farmer'];
+    if (hadLeader && jobId === 'farmer') {
+      this.player.roles.push('farmer_leader');
+    }
     this.player.posts = jobToPost[jobId] || [];
 
     const jobNames = {
