@@ -790,6 +790,10 @@ export class GameState {
 
     switch (action) {
       case 'leader_recruit': {
+        // 招募需要知客岗位
+        if (!this.player.posts.includes('zhike') && !this.player.posts.includes('farmer_leader')) {
+          return { success: false, message: '招募需要「知客」身份，请先切换岗位' };
+        }
         const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
         const hrLv = this.currentHRLevel.level;
         const hasCult = this.cultivationSystem && Object.keys(this.cultivationSystem.learnedArts).length > 0;
@@ -802,6 +806,7 @@ export class GameState {
         return result;
       }
       case 'delegate_recruit': {
+        // 派人招募也需要知客岗位（但可以是NPC知客）
         const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
         const hrLv = this.currentHRLevel.level;
         const hasCult = this.cultivationSystem && Object.keys(this.cultivationSystem.learnedArts).length > 0;
