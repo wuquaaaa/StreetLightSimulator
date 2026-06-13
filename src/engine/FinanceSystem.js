@@ -34,9 +34,6 @@ export const OVERTIME_RATES = {
 
 export class FinanceSystem {
   constructor() {
-    // 工资设置（玩家可调整）
-    this.wageSettings = {};  // postId → { baseSalary, overtimeRate, maxOvertime, benefits }
-
     // 财务记录
     this.dailyReports = [];  // 每日报告
     this.monthlyReports = []; // 每月报告
@@ -48,6 +45,19 @@ export class FinanceSystem {
 
     // 银两（总资金）
     this.treasury = 0;
+
+    // 默认岗位工资
+    this.wageSettings = {
+      farmer: {
+        baseSalary: 100,
+        overtimeRate: OVERTIME_RATES.weekday,
+        maxOvertime: 4,
+        standardHours: 8,
+        mealAllowance: false,
+        housing: false,
+        insurance: true,
+      },
+    };
   }
 
   // ====== 工资管理 ======

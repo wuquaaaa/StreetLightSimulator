@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Wheat, Users } from 'lucide-react';
+import { Wheat, Users, Coins } from 'lucide-react';
 import { getRoleInfo } from '../data/roles';
 
 // 当前可切换的所有身份（后续解锁更多）
@@ -227,6 +227,12 @@ export default function TopBar({ game, onAction }) {
             {wheatCount}
           </span>
           {showFoodTip && <FoodTooltip game={game} />}
+        </div>
+
+        {/* 银两 */}
+        <div className="flex items-center gap-1.5" title="银两">
+          <Coins size={14} className="text-yellow-400" />
+          <span className="text-stone-300">{game.financeSystem?.treasury || 0}</span>
         </div>
       </div>
     </div>

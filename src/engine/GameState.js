@@ -114,6 +114,8 @@ export class GameState {
 
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
+    this.warehouse.addItem('currency', 'silver', '银两', 200);
+    this.financeSystem.treasury = 200;
 
     this.tutorialStep = 0;
     this.buildings = [];

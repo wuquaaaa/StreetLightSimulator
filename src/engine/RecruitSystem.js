@@ -13,7 +13,7 @@ import { getVehicleInfo, getNextVehicle } from '../data/transport';
 import { getHRLevel, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
 import { rollBackground, generateCandidateAttributes, generateSalaryDemand } from '../data/recruitPool';
 import {
-  RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
+  RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_COST, RECRUIT_POOL_SIZE,
   RECRUIT_RETURN_TICKS,
 } from './constants';
 
@@ -81,11 +81,11 @@ export class RecruitSystem {
     if (this.recruitTask) {
       return { success: false, message: '已有招募任务进行中' };
     }
-    const foodAmount = warehouse.getItemAmount('food', 'wheat');
-    if (foodAmount < RECRUIT_FOOD_COST) {
-      return { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
+    const silverAmount = warehouse.getItemAmount('currency', 'silver');
+    if (silverAmount < RECRUIT_COST) {
+      return { success: false, message: `银两不足！招募需要 ${RECRUIT_COST} 银两` };
     }
-    warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+    warehouse.removeItem('currency', 'silver', RECRUIT_COST);
     const vehicle = getVehicleInfo(currentVehicle);
     this.recruitTask = {
       type: 'self',
@@ -114,11 +114,11 @@ export class RecruitSystem {
     if (farm.expandQueue.find(q => q.characterId === characterId)) {
       return { success: false, message: '该角色正在开垦，无法派出' };
     }
-    const foodAmount = warehouse.getItemAmount('food', 'wheat');
-    if (foodAmount < RECRUIT_FOOD_COST) {
-      return { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
+    const silverAmount = warehouse.getItemAmount('currency', 'silver');
+    if (silverAmount < RECRUIT_COST) {
+      return { success: false, message: `银两不足！招募需要 ${RECRUIT_COST} 银两` };
     }
-    warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
+    warehouse.removeItem('currency', 'silver', RECRUIT_COST);
     const vehicle = getVehicleInfo(currentVehicle);
     const delegateHrLevel = getHRLevel(delegate.hrExp || 0).level;
     this.recruitTask = {

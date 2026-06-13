@@ -538,14 +538,14 @@ function WorkerWelfareTab({ game, onAction }) {
         </div>
       </div>
 
-      {/* 各工人工资明细 */}
+      {/* 工人列表（简要） */}
       <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
-        <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人薪资明细</div>
-        <div className="space-y-2">
+        <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人列表</div>
+        <div className="space-y-1.5">
           {farmers.map(farmer => {
-            const wage = finance.calculateDailyWage(farmer, 'farmer');
             const state = workerSys?.workerState?.[farmer.id];
             const totalHours = (state?.workHours || 8) + (state?.overtimeHours || 0);
+            const morale = state?.morale || 70;
 
             return (
               <div key={farmer.id} className="flex items-center justify-between text-xs py-1 border-b border-stone-800/50 last:border-0">
@@ -553,11 +553,10 @@ function WorkerWelfareTab({ game, onAction }) {
                   <span className="text-stone-300 w-16 truncate">{farmer.name}</span>
                   <span className="text-stone-600">{totalHours}h/天</span>
                 </div>
-                <div className="flex items-center gap-3 text-[10px]">
-                  <span className="text-stone-500">底薪 <span className="text-amber-400">{wage.base}</span></span>
-                  <span className="text-stone-500">加班 <span className="text-orange-400">{wage.overtime}</span></span>
-                  <span className="text-stone-500">保险 <span className="text-blue-400">{wage.benefit}</span></span>
-                  <span className="text-stone-400 font-bold">合计 <span className="text-amber-300">{wage.total}</span></span>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className={morale >= 70 ? 'text-green-400' : morale >= 40 ? 'text-yellow-400' : 'text-red-400'}>
+                    心情 {Math.round(morale)}
+                  </span>
                 </div>
               </div>
             );

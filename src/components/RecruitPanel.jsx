@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Clock, UserPlus, Wheat, ArrowUpCircle } from 'lucide-react';
-import { RECRUIT_FOOD_COST, TICKS_PER_DAY } from '../engine/constants';
+import { Clock, UserPlus, Coins, ArrowUpCircle } from 'lucide-react';
+import { RECRUIT_COST, TICKS_PER_DAY } from '../engine/constants';
 import { getVehicleInfo, getNextVehicle } from '../data/transport';
 import { getHRLevel, getHRLevelProgress, getRecruitVisibility, getAvailablePreferences, RECRUIT_PREFERENCES } from '../data/hr-levels';
 
@@ -217,8 +217,8 @@ export default function RecruitPanel({ game, onAction }) {
     return !hasPlots && !isExpanding && !isRecruiting;
   });
 
-  const foodAmount = game.warehouse.getItemAmount('food', 'wheat');
-  const canAfford = foodAmount >= RECRUIT_FOOD_COST;
+  const silverAmount = game.warehouse.getItemAmount('currency', 'silver');
+  const canAfford = silverAmount >= RECRUIT_COST;
   const canStartRecruit = !recruitTask && canAfford;
 
   const [selectedDelegate, setSelectedDelegate] = useState(null);
@@ -372,7 +372,7 @@ export default function RecruitPanel({ game, onAction }) {
             <div className="flex items-center justify-between mb-2 text-xs">
               <span className="text-stone-500">花费：</span>
               <span className={canAfford ? 'text-green-400' : 'text-red-400'}>
-                <Wheat size={10} className="inline mr-1" />{foodAmount} / {RECRUIT_FOOD_COST}
+                <Coins size={10} className="inline mr-1" />{silverAmount} / {RECRUIT_COST}
               </span>
             </div>
             <div className="flex items-center justify-between mb-2 text-xs">
