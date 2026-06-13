@@ -3,6 +3,7 @@ import { Clock, UserPlus, Coins, ArrowUpCircle } from 'lucide-react';
 import { RECRUIT_COST, TICKS_PER_DAY } from '../engine/constants';
 import { getVehicleInfo, getNextVehicle } from '../data/transport';
 import { getHRLevel, getHRLevelProgress, getRecruitVisibility, getAvailablePreferences, RECRUIT_PREFERENCES } from '../data/hr-levels';
+import { getBestJobs, getAffinityVisibility } from '../data/jobAffinity';
 
 // 招募进度条卡片
 function RecruitProgressCard({ label, sublabel, task }) {
@@ -31,7 +32,7 @@ function RecruitProgressCard({ label, sublabel, task }) {
 }
 
 // 候选人选择弹窗（亲自招募用）—— 勾选多人 + 确认带走
-function CandidateChoicePopup({ candidates, onToggle, onConfirm, onSkip, hiredCount, maxHire, visibility }) {
+function CandidateChoicePopup({ candidates, onToggle, onConfirm, onSkip, hiredCount, maxHire, visibility, hrLevel }) {
   const selectedCount = candidates.filter(c => c._selected).length;
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -82,8 +83,28 @@ function CandidateChoicePopup({ candidates, onToggle, onConfirm, onSkip, hiredCo
                 {/* 期望薪资 */}
                 {c.salaryDemand != null && (
                   <div className="ml-6 text-[10px] text-amber-400/80 mb-1">
-                    💰 期望月薪: {c.salaryDemand} 两
+                    💰 期望月薪: {typeof c.salaryDemand === 'number' ? c.salaryDemand.toFixed(1) : c.salaryDemand} 两
                     {c.maxWorkHours && <span className="ml-2 text-stone-500">⏰ 最大工时: {c.maxWorkHours}h</span>}
+                  </div>
+                )}
+                {/* 适配度推荐（知客等级2+可见） */}
+                {hrLevel >= 2 && (
+                  <div className="ml-6 text-[10px] mb-1">
+                    {(() => {
+                      const bestJobs = getBestJobs(c, 2);
+                      const affVis = getAffinityVisibility(hrLevel);
+                      return bestJobs.map((bj, idx) => {
+                        const JOB_LABELS = { farmer:'农夫', miner:'矿工', smelter:'炼铁匠', alchemist:'炼丹师', herb_prepper:'药童', furnace_tender:'炉工', trader:'贩子', porter:'运工' };
+                        const label = bj.score >= 80 ? '极适合' : bj.score >= 60 ? '适合' : bj.score >= 40 ? '一般' : '不适合';
+                        const color = bj.score >= 80 ? 'text-green-400' : bj.score >= 60 ? 'text-blue-400' : bj.score >= 40 ? 'text-yellow-400' : 'text-red-400';
+                        const display = affVis.showExact ? `${bj.score}分` : affVis.showRange ? `${Math.max(0,bj.score-15)}-${Math.min(100,bj.score+15)}` : '?';
+                        return (
+                          <span key={idx} className={`mr-2 ${color}`}>
+                            {JOB_LABELS[bj.job] || bj.job} {display} {label}
+                          </span>
+                        );
+                      });
+                    })()}
                   </div>
                 )}
                 {/* 知客等级2+：看出身 */}
@@ -495,6 +516,7 @@ export default function RecruitPanel({ game, onAction }) {
           hiredCount={game.recruitHiredCount || 0}
           maxHire={game.maxRecruitHire}
           visibility={selfVisibility}
+          hrLevel={bestHrLevel.level}
         />
       )}
 

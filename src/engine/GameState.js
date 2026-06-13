@@ -790,8 +790,8 @@ export class GameState {
 
     switch (action) {
       case 'leader_recruit': {
-        // 招募需要知客岗位
-        if (!this.player.posts.includes('zhike') && !this.player.posts.includes('farmer_leader')) {
+        // 招募需要知客岗位或农民队长身份
+        if (!this.player.posts.includes('zhike') && !this.player.roles.includes('farmer_leader')) {
           return { success: false, message: '招募需要「知客」身份，请先切换岗位' };
         }
         const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
