@@ -9,6 +9,7 @@ import { GatherSystem } from './GatherSystem';
 import { MiningSystem } from './MiningSystem';
 import { AlchemySystem } from './AlchemySystem';
 import { EventSystem } from './EventSystem';
+import { RecruitSystem } from './RecruitSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -41,10 +42,10 @@ export const SaveSystem = {
       },
       log: game.log.slice(-50),
       // 招募系统
-      recruitTask: game.recruitTask ? { ...game.recruitTask } : null,
-      recruitCandidatePool: game.recruitCandidatePool || [],
-      recruitHiredCount: game.recruitHiredCount || 0,
-      currentVehicle: game.currentVehicle || 'donkey_cart',
+      recruitTask: game.recruitSystem.recruitTask ? { ...game.recruitSystem.recruitTask } : null,
+      recruitCandidatePool: game.recruitSystem.recruitCandidatePool || [],
+      recruitHiredCount: game.recruitSystem.recruitHiredCount || 0,
+      currentVehicle: game.recruitSystem.currentVehicle || 'donkey_cart',
       // 新手教程
       tutorialStep: game.tutorialStep ?? 0,
       // 建筑系统
@@ -119,10 +120,10 @@ export const SaveSystem = {
     }
 
     // 招募系统（兼容旧存档）
-    game.recruitTask = data.recruitTask || null;
-    game.recruitCandidatePool = data.recruitCandidatePool || [];
-    game.recruitHiredCount = data.recruitHiredCount || 0;
-    game.currentVehicle = data.currentVehicle || 'donkey_cart';
+    game.recruitSystem.recruitTask = data.recruitTask || null;
+    game.recruitSystem.recruitCandidatePool = data.recruitCandidatePool || [];
+    game.recruitSystem.recruitHiredCount = data.recruitHiredCount || 0;
+    game.recruitSystem.currentVehicle = data.currentVehicle || 'donkey_cart';
     // 新手教程（旧存档兼容）
     // 旧6步(0-5) → 中9步(0-8) → 新12步(0-11)
     if (data.tutorialStep != null) {

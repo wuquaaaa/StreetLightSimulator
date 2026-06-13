@@ -14,25 +14,24 @@ import { ResearchSystem } from './ResearchSystem';
 import { GatherSystem } from './GatherSystem';
 import { MiningSystem } from './MiningSystem';
 import { AlchemySystem } from './AlchemySystem';
-import { NPC_NAMES, generateName, generateAppearance } from '../data/names';
+import { RecruitSystem } from './RecruitSystem';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
+import { generateName, generateAppearance } from '../data/names';
 import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import { BUILDING_DEFS } from '../data/buildings';
 import {
   TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS, WINTER_FREEZE_CHANCE,
-  RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
-  RECRUIT_RETURN_TICKS, HR_EXP_PER_TICK,
-  TRAIT_INSIGHT_PER_DAY, ZHIIKE_INSIGHT_BONUS_LEVEL,
+  HR_EXP_PER_TICK,
+  TRAIT_INSIGHT_PER_DAY,
   FANGSHI_CONSUMPTION_REDUCTION,
 } from './constants';
-import { getVehicleInfo, getNextVehicle, VEHICLES } from '../data/transport';
-import { getHRLevel, getRecruitVisibility, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
+import { getVehicleInfo } from '../data/transport';
+import { getHRLevel, getRecruitVisibility } from '../data/hr-levels';
 
-// 纯委托映射：action → { target, method }
-// 不需要 GameState 介入的 case，统一处理 result.message 日志
+// 纯委托映射：action → 函数
 const FARM_DELEGATES = {
   water:         (g, p) => g.farm.water(p.plotId, g.player),
   remove_pest:   (g, p) => g.farm.removePest(p.plotId, g.player),
@@ -54,7 +53,15 @@ const GATHER_DELEGATES = {
   assign_gather_node:   (g, p) => g.gatherSystem.assignNode(p.nodeId, p.characterId),
   unassign_gather_node: (g, p) => g.gatherSystem.unassignNode(p.nodeId, p.characterId),
 };
-// expand_farm 和 plow 不再纯委托，移到 switch 中处理
+const RECRUIT_ACTIONS = new Set([
+  'leader_recruit', 'delegate_recruit', 'recruit_choose', 'recruit_confirm',
+  'recruit_skip', 'upgrade_vehicle',
+]);
+const RESEARCH_ACTIONS = new Set([
+  'research_post', 'start_gongfu_research', 'cancel_gongfu_research',
+  'assign_post', 'remove_post', 'start_learn_gongfu', 'cancel_learn_gongfu',
+]);
+const BUILD_ACTIONS = new Set(['start_build', 'build_hall']);
 
 export class GameState {
   constructor(playerName = '旅人') {
@@ -66,52 +73,32 @@ export class GameState {
       name: playerName, roles: ['farmer'], isPlayer: true,
       gender: 'male', age: 25,
     });
-    this.characters = []; // NPC角色列表
+    this.characters = [];
     this.farm = new FarmSystem();
     this.warehouse = new WarehouseSystem();
     this.npcAI = new NPCAISystem();
     this.foodSystem = new FoodSystem();
     this.eventSystem = new EventSystem();
 
-    // 事件临时 buff
-    this._seasonBuff = 1; // 丰收季产量乘数
-    this._freeRecruitAvailable = false; // 旅人免费招募
-
-    // 统计快照历史（每天一条，用于平衡分析）
+    this._seasonBuff = 1;
+    this._freeRecruitAvailable = false;
     this.statsHistory = [];
 
     this.researchSystem = new ResearchSystem();
     this.gatherSystem = new GatherSystem();
     this.miningSystem = new MiningSystem();
     this.alchemySystem = new AlchemySystem();
+    this.recruitSystem = new RecruitSystem();
 
-    // 事件系统（委托给 EventSystem，保留引用兼容旧存档）
     this.triggeredEvents = this.eventSystem.triggeredEvents;
 
-    // 初始物资
     this.warehouse.addItem('food', 'wheat', '小麦', 20);
     this.warehouse.addItem('seed', 'wheat_seed', '小麦种子', 10);
 
-    // 招募系统：去村庄招募
-    // recruitTask: { type, delegateId?, ticksRemaining, totalTicks, phase, vehicleId }
-    //   - self: traveling(1天) → waiting_choice → returning(1天回程)
-    //   - delegate: traveling(2天往返) → 自动带回
-    // currentVehicle: 当前使用的交通工具 ID（驴车/马车/牛车）
-    this.recruitTask = null;
-    this.recruitCandidatePool = [];
-    this.recruitSelectedCandidates = []; // 选中但尚未带回的候选人（回程中）
-    this.recruitHiredCount = 0;
-    this.currentVehicle = 'donkey_cart';
-
-    // 新手教程步骤：-1 = 已完成/跳过，0~N = 当前步骤
     this.tutorialStep = 0;
-
-    // 建筑系统
-    this.buildings = [];       // 已建造建筑ID列表
-    this.buildQueue = [];      // 建造队列 [{ buildingId, progress, totalTicks, story }]
-
-    // 司务堂建造状态
-    this.hallBuilt = false;           // 司务堂是否已建造（由 research_hall 的 onBuilt 设置）
+    this.buildings = [];
+    this.buildQueue = [];
+    this.hallBuilt = false;
 
     this.log = [
       '你来到了一片陌生的土地。',
@@ -125,41 +112,28 @@ export class GameState {
     return (this.tickCount % TICKS_PER_DAY) / TICKS_PER_DAY;
   }
 
-  get dailyFoodConsumption() {
-    return this.foodSystem.dailyConsumption;
-  }
+  get dailyFoodConsumption() { return this.foodSystem.dailyConsumption; }
+  get population() { return this.foodSystem.population; }
+  set population(val) { this.foodSystem.population = val; }
+  get foodPerPerson() { return this.foodSystem.foodPerPerson; }
+  set foodPerPerson(val) { this.foodSystem.foodPerPerson = val; }
 
-  get population() {
-    return this.foodSystem.population;
-  }
+  // 招募状态代理
+  get isRecruiting() { return this.recruitSystem.isRecruiting; }
+  get isPlayerAway() { return this.recruitSystem.isPlayerAway; }
+  get maxRecruitHire() { return this.recruitSystem.maxRecruitHire; }
+  get recruitingNPCIds() { return this.recruitSystem.recruitingNPCIds; }
 
-  set population(val) {
-    this.foodSystem.population = val;
-  }
+  // 兼容旧存档：直接访问招募属性
+  get recruitTask() { return this.recruitSystem.recruitTask; }
+  set recruitTask(val) { this.recruitSystem.recruitTask = val; }
+  get recruitCandidatePool() { return this.recruitSystem.recruitCandidatePool; }
+  set recruitCandidatePool(val) { this.recruitSystem.recruitCandidatePool = val; }
+  get recruitHiredCount() { return this.recruitSystem.recruitHiredCount; }
+  set recruitHiredCount(val) { this.recruitSystem.recruitHiredCount = val; }
+  get currentVehicle() { return this.recruitSystem.currentVehicle; }
+  set currentVehicle(val) { this.recruitSystem.currentVehicle = val; }
 
-  get foodPerPerson() {
-    return this.foodSystem.foodPerPerson;
-  }
-
-  set foodPerPerson(val) {
-    this.foodSystem.foodPerPerson = val;
-  }
-
-  // 招募状态查询
-  get isRecruiting() {
-    return this.recruitTask !== null;
-  }
-
-  get isPlayerAway() {
-    return this.recruitTask !== null && this.recruitTask.type === 'self';
-  }
-
-  // 获取当前招募载量上限
-  get maxRecruitHire() {
-    return getVehicleInfo(this.currentVehicle).passengerCapacity;
-  }
-
-  // 获取当前HR等级（取队伍中最高）
   get currentHRLevel() {
     let maxExp = 0;
     for (const npc of this.characters) {
@@ -168,106 +142,127 @@ export class GameState {
     return getHRLevel(maxExp);
   }
 
-  // 获取招募时候选人信息可见性
   get recruitVisibility() {
     return getRecruitVisibility(this.currentHRLevel.level);
   }
 
-  // 获取正在招募中（外出）的 NPC id 列表
-  get recruitingNPCIds() {
-    const ids = new Set();
-    if (this.recruitTask && this.recruitTask.type === 'delegate') {
-      ids.add(this.recruitTask.delegateId);
+  // ====== 材料/前置检查（复用方法）======
+
+  _checkMaterials(costs) {
+    const lacks = [];
+    for (const cost of costs) {
+      const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
+      if (have < cost.amount) {
+        lacks.push(`${cost.name}(${have}/${cost.amount})`);
+      }
     }
-    return ids;
+    return lacks.length > 0 ? `材料不足：${lacks.join('、')}` : null;
   }
+
+  _consumeMaterials(costs) {
+    for (const cost of costs) {
+      this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
+    }
+  }
+
+  // ====== Tick ======
 
   tick() {
     this.tickCount++;
+    const isNewDay = this.tickCount % TICKS_PER_DAY === 0;
 
-    // 每 TICKS_PER_DAY 个 tick 算一天
-    if (this.tickCount % TICKS_PER_DAY === 0) {
-      this.day++;
+    if (isNewDay) {
+      this._tickDay();
+    }
 
-      // 每日快照统计
-      this.recordStats();
+    this._tickPerTick(isNewDay);
+  }
 
-      // 季节
-      const seasonIndex = Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length;
-      const newSeason = SEASONS[seasonIndex];
-      if (newSeason !== this.season) {
-        this.season = newSeason;
-        this.addLog(`季节变化：进入了${this.season}季`);
-      }
+  _tickDay() {
+    this.day++;
+    this.recordStats();
 
-      // 事件检查
-      const wheatCount = this.warehouse.getItemAmount('food', 'wheat');
-      const { notifications: eventNotifs, effects: eventEffects } = this.eventSystem.checkEvents(
-        this.day, this.season, this.population, wheatCount
-      );
-      eventNotifs.forEach(n => this.addNotification(n));
-      for (const eff of eventEffects) {
-        this.addLog(eff.message);
-        if (eff.type === 'pest_outbreak') {
-          // 临时提高虫害概率（本 tick 生效）
-          for (const plot of this.farm.plots) {
-            if (plot.state === 'growing' && Math.random() < 0.3) {
-              plot.spawnPest?.();
-            }
-          }
-        }
-        if (eff.type === 'cold_snap') {
-          // 额外冻伤
-          const extra = this.farm.applyWinterDamage(eff.freezeChance);
-          if (extra > 0) this.addLog(`寒潮冻死了${extra}块作物...`);
-        }
-        if (eff.type === 'food_bonus') {
-          // 未来几次收获加成（通过全局buff）
-          this._seasonBuff = eff.multiplier;
-        }
-        if (eff.type === 'free_recruit') {
-          this._freeRecruitAvailable = true;
-        }
-      }
+    // 季节
+    const seasonIndex = Math.floor((this.day - 1) / DAYS_PER_SEASON) % SEASONS.length;
+    const newSeason = SEASONS[seasonIndex];
+    if (newSeason !== this.season) {
+      this.season = newSeason;
+      this.addLog(`季节变化：进入了${this.season}季`);
+    }
 
-      // 教程延迟触发
-      if (this.tutorialStep === 4 && this.day >= 3) {
-        this.tutorialStep = 5; // 种田完成 → 等第3天触发招募教程
-        this.addNotification('tutorial:recruit');
-      }
-      if (this.tutorialStep === 9 && this.day >= 10) {
-        this.tutorialStep = 10; // 招募完成 → 等第10天触发建筑教程
-        this.addNotification('tutorial:build');
-      }
+    // 事件检查 → 事件效果委托给 EventSystem
+    const wheatCount = this.warehouse.getItemAmount('food', 'wheat');
+    const { notifications: eventNotifs, effects: eventEffects } = this.eventSystem.checkEvents(
+      this.day, this.season, this.population, wheatCount
+    );
+    eventNotifs.forEach(n => this.addNotification(n));
+    this._applyEventEffects(eventEffects);
 
-      // 食物消耗（房事 NPC 可减免）
-      const consumptionMul = this.warehouse.fangshiActive ? (1 - FANGSHI_CONSUMPTION_REDUCTION) : 1;
-      const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player, consumptionMul);
-      foodResult.logs.forEach(msg => this.addLog(msg));
-      foodResult.notifications.forEach(msg => this.addNotification(msg));
-      if (foodResult.moodDelta !== 0) {
-        this.player.changeMood(foodResult.moodDelta);
-      }
+    // 教程延迟触发
+    if (this.tutorialStep === 4 && this.day >= 3) {
+      this.tutorialStep = 5;
+      this.addNotification('tutorial:recruit');
+    }
+    if (this.tutorialStep === 9 && this.day >= 10) {
+      this.tutorialStep = 10;
+      this.addNotification('tutorial:build');
+    }
 
-      // NPC 揭示进度更新（每天推进 TICKS_PER_DAY 个 tick）
-      for (const npc of this.characters) {
-        if (!npc.isRetired) {
-          npc.updateRevealProgress(TICKS_PER_DAY);
-        }
-      }
+    // 食物消耗
+    const consumptionMul = this.warehouse.fangshiActive ? (1 - FANGSHI_CONSUMPTION_REDUCTION) : 1;
+    const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player, consumptionMul);
+    foodResult.logs.forEach(msg => this.addLog(msg));
+    foodResult.notifications.forEach(msg => this.addNotification(msg));
+    if (foodResult.moodDelta !== 0) {
+      this.player.changeMood(foodResult.moodDelta);
+    }
 
-      // 特质揭示（玩家对 NPC 特质的了解）
-      // 规则：同岗共事 或 玩家是知客 → 积累洞察
-      this._tickTraitInsight();
-
-      // 每年（28天）推进 NPC 年龄 + 退休检查
-      if (this.day > 1 && (this.day - 1) % 28 === 0) {
-        this._tickAging();
+    // NPC 揭示进度
+    for (const npc of this.characters) {
+      if (!npc.isRetired) {
+        npc.updateRevealProgress(TICKS_PER_DAY);
       }
     }
 
-    // 农田tick（传入是否新的一天 + 当前季节）
-    const isNewDay = this.tickCount % TICKS_PER_DAY === 0;
+    // 特质揭示
+    this._tickTraitInsight();
+
+    // 每年推进年龄 + 退休
+    if (this.day > 1 && (this.day - 1) % 28 === 0) {
+      this._tickAging();
+    }
+
+    // 冬天冻害
+    if (this.season === '冬') {
+      const damagedCount = this.farm.applyWinterDamage(WINTER_FREEZE_CHANCE);
+      for (let i = 0; i < damagedCount; i++) {
+        this.addLog('严寒使一块作物冻死了');
+      }
+    }
+  }
+
+  _applyEventEffects(eventEffects) {
+    for (const eff of eventEffects) {
+      this.addLog(eff.message);
+      if (eff.type === 'pest_outbreak') {
+        for (const plot of this.farm.plots) {
+          if (plot.state === 'growing' && Math.random() < 0.3) {
+            plot.spawnPest?.();
+          }
+        }
+      } else if (eff.type === 'cold_snap') {
+        const extra = this.farm.applyWinterDamage(eff.freezeChance);
+        if (extra > 0) this.addLog(`寒潮冻死了${extra}块作物...`);
+      } else if (eff.type === 'food_bonus') {
+        this._seasonBuff = eff.multiplier;
+      } else if (eff.type === 'free_recruit') {
+        this._freeRecruitAvailable = true;
+      }
+    }
+  }
+
+  _tickPerTick(isNewDay) {
+    // 农田 tick
     const farmEvents = this.farm.tick(isNewDay, this.season);
     for (const evt of farmEvents) {
       if (evt.type === 'ready') {
@@ -296,7 +291,6 @@ export class GameState {
 
     // 目标农田数自动开垦
     if (this.farm.plots.length + this.farm.expandQueue.length < this.farm.targetPlotCount) {
-      // 找一个空闲农民去开垦
       const allFarmers = this._getAllFarmers();
       const busyIds = new Set(this.farm.expandQueue.map(q => q.characterId));
       const idle = allFarmers.find(f => !busyIds.has(f.id) && this.farm.getPlotsForCharacter(f.id).length === 0);
@@ -306,7 +300,7 @@ export class GameState {
       }
     }
 
-    // NPC农民自动劳作（排除正在招募中 + 已退休的 NPC）
+    // NPC 自动劳作
     const recruitingIds = this.recruitingNPCIds;
     let availableNPCs = this.characters.filter(c => !c.isRetired);
     if (recruitingIds.size > 0) {
@@ -314,7 +308,7 @@ export class GameState {
     }
     this.npcAI.tickAutoWork(availableNPCs, this.farm, this.warehouse, (msg) => this.addLog(msg));
 
-    // 房事 NPC：被动 buff + 自动整理货架
+    // 房事 NPC
     const fangshiNPC = this.characters.find(c => !c.isRetired && c.hasPost('fangshi'));
     this.warehouse.fangshiActive = !!fangshiNPC;
     if (fangshiNPC) {
@@ -325,31 +319,29 @@ export class GameState {
       }
     }
 
-    // 后山采集系统 tick（每天产出材料）
+    // 后山采集
     if (this.gatherSystem.unlocked) {
       const allChars = [this.player, ...this.characters];
       this.gatherSystem.tick(isNewDay, allChars, this.warehouse, (msg) => this.addLog(msg));
     }
 
-    // 铁道采矿系统 tick（每天产出铁矿石）
+    // 铁道采矿
     this.miningSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
 
-    // 妙手炼丹系统 tick（每天消耗草药产出丹药）
+    // 妙手炼丹
     this.alchemySystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
 
-    // 建筑建造队列进度（所有建筑统一走此队列，包括司务堂）
+    // 建筑建造队列
     if (this.buildQueue.length > 0) {
       const currentBuild = this.buildQueue[0];
       currentBuild.progress++;
       if (currentBuild.progress >= currentBuild.totalTicks) {
-        // 建造完成
         const def = BUILDING_DEFS.find(d => d.id === currentBuild.buildingId);
         if (def) {
           this.buildings.push(currentBuild.buildingId);
           if (def.onBuilt) def.onBuilt(this);
           this.addLog(`${def.icon}${def.name}建造完成！`);
           this.addNotification(`${def.icon}${def.name}建造完成！`);
-          // 教程推进：建造完成后进入教程step 11
           if (this.tutorialStep === 10) {
             this.tutorialStep = 11;
           }
@@ -358,7 +350,7 @@ export class GameState {
       }
     }
 
-    // 司务堂（研究系统）tick
+    // 司务堂研究
     if (this.researchSystem.unlocked) {
       const researchMsgs = this.researchSystem.tick(this.characters, this.farm);
       for (const msg of researchMsgs.messages) {
@@ -366,51 +358,65 @@ export class GameState {
       }
     }
 
-    // 招募队列处理
+    // 招募 tick
     this._tickRecruit();
-
-    // 冬天冻害
-    if (this.season === '冬' && this.tickCount % TICKS_PER_DAY === 0) {
-      const damagedCount = this.farm.applyWinterDamage(WINTER_FREEZE_CHANCE);
-      for (let i = 0; i < damagedCount; i++) {
-        this.addLog('严寒使一块作物冻死了');
-      }
-    }
   }
+
+  // ====== DoAction ======
 
   doAction(action, params = {}) {
     let result;
 
-    // 纯委托：农田操作（需要检查玩家是否在场）
+    // 纯委托：农田
     const farmFn = FARM_DELEGATES[action];
     if (farmFn) {
-      // 玩家亲自招募期间，禁止手动农田操作
       if (this.isPlayerAway) {
         result = { success: false, message: '你正在去村庄的路上，无法操作农田' };
       } else {
         result = farmFn(this, params);
       }
-      if (result && result.message) this.addLog(result.message);
+      if (result?.message) this.addLog(result.message);
       return result;
     }
 
-    // 纯委托：后山采集操作
+    // 纯委托：后山采集
     const gatherFn = GATHER_DELEGATES[action];
     if (gatherFn) {
       result = gatherFn(this, params);
-      if (result && result.message) this.addLog(result.message);
+      if (result?.message) this.addLog(result.message);
       return result;
     }
 
-    // 纯委托：仓库操作（2 个）
+    // 纯委托：仓库
     const warehouseFn = WAREHOUSE_DELEGATES[action];
     if (warehouseFn) {
       result = warehouseFn(this, params);
-      if (result && result.message) this.addLog(result.message);
+      if (result?.message) this.addLog(result.message);
       return result;
     }
 
-    // 带副作用的操作（6 个）
+    // 招募 actions → RecruitSystem
+    if (RECRUIT_ACTIONS.has(action)) {
+      result = this._dispatchRecruitAction(action, params);
+      if (result?.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 建筑 actions
+    if (BUILD_ACTIONS.has(action)) {
+      result = this._dispatchBuildAction(action, params);
+      if (result?.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 研究 actions
+    if (RESEARCH_ACTIONS.has(action)) {
+      result = this._dispatchResearchAction(action, params);
+      if (result?.message) this.addLog(result.message);
+      return result;
+    }
+
+    // 其他 actions
     switch (action) {
       case 'harvest':
         if (this.isPlayerAway) {
@@ -425,23 +431,26 @@ export class GameState {
         break;
       case 'plant':
         result = this.farm.plant(params.plotId, params.cropId, this.player, this.warehouse);
-        // 教程推进：播种成功 → 进入浇水照料步骤
         if (result.success && this.tutorialStep === 3) {
           this.tutorialStep = 4;
         }
         break;
       case 'recruit_accept': {
-        const { name } = this._createNPCFarmer();
+        const npc = this._createNPCFromRandom();
+        this.characters.push(npc);
+        this.population++;
         this.triggeredEvents['recruit'] = 'accepted';
-        this.addLog(`${name}加入了你的队伍！他是一个农民。`);
+        this.addLog(`${npc.name}加入了你的队伍！他是一个农民。`);
         this._tryUnlockResearch();
-        result = { success: true, message: `${name}加入了`, npcName: name };
+        result = { success: true, message: `${npc.name}加入了`, npcName: npc.name };
         break;
       }
       case 'recruit_accept_with_promote': {
-        const { name } = this._createNPCFarmer();
+        const npc = this._createNPCFromRandom();
+        this.characters.push(npc);
+        this.population++;
         this._tryUnlockResearch();
-        result = { success: true, message: `${name}加入了，你成为了农民队长`, npcName: name };
+        result = { success: true, message: `${npc.name}加入了，你成为了农民队长`, npcName: npc.name };
         break;
       }
       case 'recruit_reject':
@@ -449,157 +458,6 @@ export class GameState {
         this.addLog('你拒绝了来访者的请求。大约30天后才会再有人来。');
         result = { success: true, message: '拒绝了招工请求' };
         break;
-      case 'leader_recruit': {
-        // 亲自去村庄招募
-        if (this.recruitTask) {
-          result = { success: false, message: '已有招募任务进行中' };
-          break;
-        }
-        // 每次出发都刷新候选人池
-        this._refreshCandidatePool();
-        const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
-        if (foodAmount < RECRUIT_FOOD_COST) {
-          result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
-          break;
-        }
-        this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
-        const vehicle = getVehicleInfo(this.currentVehicle);
-        this.recruitTask = {
-          type: 'self',
-          ticksRemaining: RECRUIT_TICKS_SELF,
-          totalTicks: RECRUIT_TICKS_SELF,
-          phase: 'traveling',
-          vehicleId: this.currentVehicle,
-        };
-        result = { success: true, message: `你赶着${vehicle.icon}${vehicle.name}出发去村庄招募...大约1天后到达` };
-        break;
-      }
-      case 'delegate_recruit': {
-        // 派 NPC 去村庄招募
-        const { characterId, preference } = params;
-        if (!characterId) {
-          result = { success: false, message: '未指定派出的角色' };
-          break;
-        }
-        if (this.recruitTask) {
-          result = { success: false, message: '已有招募任务进行中' };
-          break;
-        }
-        // 每次派出都刷新候选人池
-        this._refreshCandidatePool();
-        const foodAmount = this.warehouse.getItemAmount('food', 'wheat');
-        if (foodAmount < RECRUIT_FOOD_COST) {
-          result = { success: false, message: `粮食不足！招募需要 ${RECRUIT_FOOD_COST} 单位小麦` };
-          break;
-        }
-        // 检查 NPC 是否在开垦
-        if (this.farm.expandQueue.find(q => q.characterId === characterId)) {
-          result = { success: false, message: '该角色正在开垦，无法派出' };
-          break;
-        }
-        const delegate = this.characters.find(c => c.id === characterId);
-        if (!delegate) {
-          result = { success: false, message: '找不到该角色' };
-          break;
-        }
-        this.warehouse.removeItem('food', 'wheat', RECRUIT_FOOD_COST);
-        const vehicle = getVehicleInfo(this.currentVehicle);
-        const delegateHrLevel = getHRLevel(delegate.hrExp || 0).level;
-        this.recruitTask = {
-          type: 'delegate',
-          delegateId: characterId,
-          delegateHrLevel,
-          preference: preference || 'any',
-          ticksRemaining: RECRUIT_TICKS_DELEGATE,
-          totalTicks: RECRUIT_TICKS_DELEGATE,
-          phase: 'traveling',
-          vehicleId: this.currentVehicle,
-        };
-        const prefLabel = preference === 'any' ? '' : `，按你的要求尽量挑${RECRUIT_PREFERENCES.find(p => p.id === preference)?.label || ''}`;
-        result = { success: true, message: `${delegate.name}赶着${vehicle.icon}${vehicle.name}出发去村庄招募了...约2天后带回${prefLabel}` };
-        break;
-      }
-      case 'recruit_choose': {
-        // 亲自招募：勾选/取消勾选候选人（暂存，不立即创建 NPC）
-        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
-          result = { success: false, message: '当前不在选择阶段' };
-          break;
-        }
-        const { candidateIndex } = params;
-        if (candidateIndex == null || candidateIndex < 0 || candidateIndex >= this.recruitCandidatePool.length) {
-          result = { success: false, message: '无效的选择' };
-          break;
-        }
-        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-        const maxHire = vehicle.passengerCapacity;
-
-        // 检查候选人是否已被选中（通过 _selectedIdx 标记）
-        const candidate = this.recruitCandidatePool[candidateIndex];
-        if (candidate._selected) {
-          // 取消选择
-          candidate._selected = false;
-          this.recruitHiredCount = Math.max(0, this.recruitHiredCount - 1);
-          result = { success: true, message: `取消了 ${candidate.name} 的选择` };
-        } else {
-          // 选中
-          if (this.recruitHiredCount >= maxHire) {
-            result = { success: false, message: `${vehicle.name}已满，最多带 ${maxHire} 人` };
-            break;
-          }
-          candidate._selected = true;
-          this.recruitHiredCount++;
-          result = { success: true, message: `选中了 ${candidate.name}（还能再选 ${maxHire - this.recruitHiredCount} 人）` };
-        }
-        break;
-      }
-      case 'recruit_confirm': {
-        // 亲自招募：确认带走已选中的人，进入回程
-        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
-          result = { success: false, message: '当前不在选择阶段' };
-          break;
-        }
-        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-        // 把选中的候选人存入 selectedCandidates，清理候选池
-        this.recruitSelectedCandidates = this.recruitCandidatePool
-          .filter(c => c._selected)
-          .map(c => { const { _selected, ...rest } = c; return rest; });
-        this.recruitCandidatePool = [];
-
-        const count = this.recruitSelectedCandidates.length;
-        const msg = count > 0
-          ? `你带着 ${count} 位村民赶${vehicle.icon}${vehicle.name}回家！大约1天后到达。`
-          : '你没有选任何人，空车回去了。';
-        this.recruitTask.phase = 'returning';
-        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
-        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
-        this.addLog(msg);
-        // 新手教程：进入回程阶段
-        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
-          this.tutorialStep = 9;
-        }
-        result = { success: true, message: msg };
-        break;
-      }
-      case 'recruit_skip': {
-        // 亲自招募到达村庄后放弃选择，进入回程
-        if (!this.recruitTask || this.recruitTask.phase !== 'waiting_choice') {
-          result = { success: false, message: '当前不在选择阶段' };
-          break;
-        }
-        // 空手回程
-        this.recruitSelectedCandidates = [];
-        this.recruitCandidatePool = [];
-        this.recruitTask.phase = 'returning';
-        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
-        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
-        this.addLog('你没有找到合适的人选，赶车回去了。');
-        // 新手教程：进入回程阶段
-        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
-          this.tutorialStep = 9;
-        }
-        result = { success: true, message: '回程中...' };
-        break;
-      }
       case 'set_player_roles':
         if (params.roles && Array.isArray(params.roles)) {
           this.player.roles = params.roles;
@@ -617,7 +475,6 @@ export class GameState {
           break;
         }
         const charName = char.name;
-        // 解除所有地块分配
         for (const plot of this.farm.plots) {
           if (Array.isArray(plot.assignedTo)) {
             plot.assignedTo = plot.assignedTo.filter(id => id !== char.id);
@@ -625,15 +482,12 @@ export class GameState {
             plot.assignedTo = [];
           }
         }
-        // 取消开垦任务
         this.farm.expandQueue = this.farm.expandQueue.filter(q => q.characterId !== char.id);
-        // 取消后山采集分配
         if (this.gatherSystem) {
           for (const node of this.gatherSystem.nodes || []) {
             node.assignedTo = node.assignedTo.filter(id => id !== char.id);
           }
         }
-        // 移除角色
         this.characters = this.characters.filter(c => c.id !== char.id);
         this.addLog(`${charName}已被遣散。`);
         this.player.changeMood(-3);
@@ -647,7 +501,6 @@ export class GameState {
         }
         result = this.farm.plow(params.plotId, this.player);
         if (result.success && result.seedFound) {
-          // 翻地时发现了随机种子，放入仓库
           const seed = result.seedFound;
           const addResult = this.warehouse.addItem('seed', seed.seedId, seed.seedName, seed.amount);
           let msg = `翻地完成！意外翻出了${seed.amount}颗${seed.seedName}！`;
@@ -656,15 +509,12 @@ export class GameState {
           }
           result.message = msg;
         }
-        // 教程推进：翻地成功 → 进入播种步骤
         if (result.success && this.tutorialStep === 2) {
           this.tutorialStep = 3;
         }
         break;
       }
-
       case 'expand_farm': {
-        // 农民队长：优先指派空闲 NPC 去开垦
         if (this.player.hasRole('farmer_leader')) {
           const allFarmers = this._getAllFarmers();
           const busyIds = new Set(this.farm.expandQueue.map(q => q.characterId));
@@ -680,15 +530,11 @@ export class GameState {
             }
             break;
           }
-          // 没有空闲 NPC → 尝试玩家亲自上
           if (this.isPlayerAway) {
             result = { success: false, message: '没有空闲农民，你又在路上，暂时无法开垦' };
             break;
           }
-          // 玩家亲自上
         }
-
-        // 普通农民：自己开垦（不能同时开垦多块）
         if (this.isPlayerAway) {
           result = { success: false, message: '你正在去村庄的路上，无法开垦' };
           break;
@@ -704,9 +550,7 @@ export class GameState {
         }
         break;
       }
-
       case 'upgrade_spirit_plot': {
-        // 灵田升级：检查聚灵术 → 检查材料 → 消耗 → 执行升级
         if (!this.researchSystem.isGongfuResearched('spirit_focus')) {
           result = { success: false, message: '需要先在司务堂研究「聚灵术」才能升级灵田' };
           break;
@@ -717,233 +561,184 @@ export class GameState {
           result = { success: false, message: '无效的升级目标' };
           break;
         }
-        // 检查材料是否足够
-        const lacks = [];
-        for (const cost of costs) {
-          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
-          if (have < cost.amount) {
-            lacks.push(`${cost.name}(${have}/${cost.amount})`);
-          }
-        }
-        if (lacks.length > 0) {
-          result = { success: false, message: `材料不足：${lacks.join('、')}` };
+        const matError = this._checkMaterials(costs);
+        if (matError) {
+          result = { success: false, message: matError };
           break;
         }
-        // 消耗材料
-        for (const cost of costs) {
-          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
-        }
-        // 执行升级
+        this._consumeMaterials(costs);
         result = this.farm.upgradeToSpirit(params.plotId, targetLevel);
         break;
       }
+      default:
+        result = { success: false, message: '未知操作' };
+    }
+    if (result?.message) this.addLog(result.message);
+    return result;
+  }
 
-      // ====== 建造司务堂（转发到 start_build）======
-      case 'build_hall':
-        params = { ...params, buildingId: 'research_hall' };
-        // fall through to start_build
+  // ====== 招募 action 分发 ======
 
-      // ====== 通用建筑建造 ======
-      case 'start_build': {
-        const { buildingId } = params;
-        const def = BUILDING_DEFS.find(d => d.id === buildingId);
-        if (!def) {
-          result = { success: false, message: '未知建筑' };
-          break;
-        }
-        if (this.buildings.includes(buildingId)) {
-          result = { success: false, message: `${def.name}已经建好了` };
-          break;
-        }
-        if (this.buildQueue.length > 0) {
-          result = { success: false, message: '已有建筑正在建造中' };
-          break;
-        }
-        if (!def.requires(this)) {
-          result = { success: false, message: def.lockedReason || '建造条件不满足' };
-          break;
-        }
-        // 检查材料
-        const buildLacks = [];
-        for (const cost of def.costs) {
-          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
-          if (have < cost.amount) {
-            buildLacks.push(`${cost.name}(${have}/${cost.amount})`);
-          }
-        }
-        if (buildLacks.length > 0) {
-          result = { success: false, message: `材料不足：${buildLacks.join('、')}` };
-          break;
-        }
-        // 消耗材料
-        for (const cost of def.costs) {
-          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
-        }
-        // 加入建造队列
-        const buildTicks = def.buildDays * TICKS_PER_DAY;
-        this.buildQueue.push({
-          buildingId,
-          progress: 0,
-          totalTicks: buildTicks,
-          story: def.story || '',
-        });
-        this.addLog(`你开始建造${def.icon}${def.name}……预计需要 ${def.buildDays} 天。`);
-        if (def.story) this.addLog(def.story);
-        result = { success: true, message: `开始建造${def.name}` };
-        break;
-      }
+  _dispatchRecruitAction(action, params) {
+    const rs = this.recruitSystem;
 
-      // ====== 司务堂（研究系统）actions ======
-      case 'research_post': {
-        // 研究解锁岗位
-        if (!this.researchSystem.unlocked) {
-          result = { success: false, message: '司务堂尚未开启' };
-          break;
+    switch (action) {
+      case 'leader_recruit': {
+        const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
+        rs.refreshCandidatePool(existingNames);
+        const result = rs.handleLeaderRecruit(this.warehouse, this.currentVehicle);
+        if (result.success) {
+          const vehicle = getVehicleInfo(this.currentVehicle);
+          this.addLog(`你赶着${vehicle.icon}${vehicle.name}来到村庄，有10位村民愿意跟随你。${vehicle.description}`);
         }
-        const { postId } = params;
-        result = this.researchSystem.startPostResearch(postId);
-        break;
+        return result;
       }
-      case 'start_gongfu_research': {
-        // 开始研究功法
-        if (!this.researchSystem.unlocked) {
-          result = { success: false, message: '司务堂尚未开启' };
-          break;
+      case 'delegate_recruit': {
+        const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
+        rs.refreshCandidatePool(existingNames);
+        return rs.handleDelegateRecruit(params, this.warehouse, this.currentVehicle, this.characters, this.farm);
+      }
+      case 'recruit_choose':
+        return rs.handleRecruitChoose(params.candidateIndex);
+      case 'recruit_confirm': {
+        const result = rs.handleRecruitConfirm();
+        if (result.tutorialStep) {
+          this.tutorialStep = Math.max(this.tutorialStep, result.tutorialStep);
         }
-        const { gongfuId } = params;
-        result = this.researchSystem.startGongfuResearch(gongfuId);
-        break;
+        return result;
       }
+      case 'recruit_skip': {
+        const result = rs.handleRecruitSkip();
+        if (result.tutorialStep) {
+          this.tutorialStep = Math.max(this.tutorialStep, result.tutorialStep);
+        }
+        return result;
+      }
+      case 'upgrade_vehicle': {
+        const result = rs.handleUpgradeVehicle(this.warehouse, this.currentVehicle);
+        if (result.success && result.logMessage) {
+          this.addLog(result.logMessage);
+          this.currentVehicle = result.newVehicle;
+        }
+        return result;
+      }
+      default:
+        return { success: false, message: '未知招募操作' };
+    }
+  }
+
+  // ====== 建筑 action 分发 ======
+
+  _dispatchBuildAction(action, params) {
+    if (action === 'build_hall') {
+      params = { ...params, buildingId: 'research_hall' };
+    }
+    const { buildingId } = params;
+    const def = BUILDING_DEFS.find(d => d.id === buildingId);
+    if (!def) return { success: false, message: '未知建筑' };
+    if (this.buildings.includes(buildingId)) {
+      return { success: false, message: `${def.name}已经建好了` };
+    }
+    if (this.buildQueue.length > 0) {
+      return { success: false, message: '已有建筑正在建造中' };
+    }
+    if (!def.requires(this)) {
+      return { success: false, message: def.lockedReason || '建造条件不满足' };
+    }
+    const matError = this._checkMaterials(def.costs);
+    if (matError) return { success: false, message: matError };
+    this._consumeMaterials(def.costs);
+    const buildTicks = def.buildDays * TICKS_PER_DAY;
+    this.buildQueue.push({ buildingId, progress: 0, totalTicks: buildTicks, story: def.story || '' });
+    this.addLog(`你开始建造${def.icon}${def.name}……预计需要 ${def.buildDays} 天。`);
+    if (def.story) this.addLog(def.story);
+    return { success: true, message: `开始建造${def.name}` };
+  }
+
+  // ====== 研究 action 分发 ======
+
+  _dispatchResearchAction(action, params) {
+    if (!this.researchSystem.unlocked) {
+      return { success: false, message: '司务堂尚未开启' };
+    }
+
+    switch (action) {
+      case 'research_post':
+        return this.researchSystem.startPostResearch(params.postId);
+      case 'start_gongfu_research':
+        return this.researchSystem.startGongfuResearch(params.gongfuId);
       case 'cancel_gongfu_research': {
-        // 取消功法研究（放弃当前进度）
         if (!this.researchSystem.currentGongfuResearch) {
-          result = { success: false, message: '当前没有在研究功法' };
-          break;
+          return { success: false, message: '当前没有在研究功法' };
         }
         const canceledGongfu = getGongfuInfo(this.researchSystem.currentGongfuResearch.gongfuId);
         this.researchSystem.currentGongfuResearch = null;
-        result = { success: true, message: `停止了参悟「${canceledGongfu?.name}」` };
-        break;
+        return { success: true, message: `停止了参悟「${canceledGongfu?.name}」` };
       }
       case 'assign_post': {
-        // 任命 NPC 到岗位
-        if (!this.researchSystem.unlocked) {
-          result = { success: false, message: '司务堂尚未开启' };
-          break;
+        const targetChar = this._findCharacter(params.characterId);
+        if (!targetChar) return { success: false, message: '找不到该角色' };
+        if (!this.researchSystem.isPostResearched(params.postId)) {
+          return { success: false, message: '该岗位尚未研究解锁' };
         }
-        const { characterId, postId } = params;
-        const targetChar = this._findCharacter(characterId);
-        if (!targetChar) {
-          result = { success: false, message: '找不到该角色' };
-          break;
-        }
-        if (!this.researchSystem.isPostResearched(postId)) {
-          result = { success: false, message: '该岗位尚未研究解锁' };
-          break;
-        }
-        result = targetChar.assignPost(postId);
+        const result = targetChar.assignPost(params.postId);
         if (result.success) {
-          const postInfo = getPostInfo(postId);
-          // 独占生产岗位（铁道/妙手）→ 解除农田分配
+          const postInfo = getPostInfo(params.postId);
           if (postInfo?.exclusive && postInfo?.category === 'production') {
-            const plots = this.farm.getPlotsForCharacter(characterId);
+            const plots = this.farm.getPlotsForCharacter(params.characterId);
             for (const p of plots) {
-              this.farm.unassignPlot(p.id, characterId);
+              this.farm.unassignPlot(p.id, params.characterId);
             }
-            // 解除后山采集
             for (const node of this.gatherSystem.nodes || []) {
-              this.gatherSystem.unassignNode(node.id, characterId);
+              this.gatherSystem.unassignNode(node.id, params.characterId);
             }
             if (plots.length > 0) {
               this.addLog(`${targetChar.name}不再耕种，转为${postInfo.name}`);
             }
           }
         }
-        break;
+        return result;
       }
       case 'remove_post': {
-        // 移除 NPC 的岗位
-        const { characterId: charId, postId: rmPostId } = params;
-        const targetCharRm = this._findCharacter(charId);
-        if (!targetCharRm) {
-          result = { success: false, message: '找不到该角色' };
-          break;
-        }
-        result = targetCharRm.removePost(rmPostId);
-        break;
+        const targetCharRm = this._findCharacter(params.characterId);
+        if (!targetCharRm) return { success: false, message: '找不到该角色' };
+        return targetCharRm.removePost(params.postId);
       }
       case 'start_learn_gongfu': {
-        // NPC 开始学习功法
-        if (!this.researchSystem.unlocked) {
-          result = { success: false, message: '司务堂尚未开启' };
-          break;
-        }
-        const { characterId: learnerId, gongfuId: learnGongfuId } = params;
-        const learner = this._findCharacter(learnerId);
-        if (!learner) {
-          result = { success: false, message: '找不到该角色' };
-          break;
-        }
+        const learner = this._findCharacter(params.characterId);
+        if (!learner) return { success: false, message: '找不到该角色' };
         const allChars = [this.player, ...this.characters];
-        result = this.researchSystem.startLearning(learnerId, learnGongfuId, learner, allChars, this.farm);
-        break;
+        return this.researchSystem.startLearning(params.characterId, params.gongfuId, learner, allChars, this.farm);
       }
       case 'cancel_learn_gongfu': {
-        // 取消 NPC 学习功法
-        const { characterId: cancelLearnerId } = params;
-        const cancelLearner = this._findCharacter(cancelLearnerId);
-        if (!cancelLearner) {
-          result = { success: false, message: '找不到该角色' };
-          break;
-        }
-        result = this.researchSystem.cancelLearning(cancelLearnerId, cancelLearner);
-        break;
+        const cancelLearner = this._findCharacter(params.characterId);
+        if (!cancelLearner) return { success: false, message: '找不到该角色' };
+        return this.researchSystem.cancelLearning(params.characterId, cancelLearner);
       }
-
-      // ====== 交通工具升级 ======
-      case 'upgrade_vehicle': {
-        if (this.recruitTask) {
-          result = { success: false, message: '招募进行中，无法更换载具' };
-          break;
-        }
-        const nextVehicle = getNextVehicle(this.currentVehicle);
-        if (!nextVehicle) {
-          result = { success: false, message: '已经是最好的载具了' };
-          break;
-        }
-        // 检查前置
-        if (nextVehicle.requires && this.currentVehicle !== nextVehicle.requires) {
-          result = { success: false, message: `需要先拥有${getVehicleInfo(nextVehicle.requires).name}` };
-          break;
-        }
-        // 检查材料
-        const lacks = [];
-        for (const cost of nextVehicle.upgradeCost) {
-          const have = this.warehouse.getItemAmount(cost.category, cost.itemId);
-          if (have < cost.amount) {
-            lacks.push(`${cost.name}(${have}/${cost.amount})`);
-          }
-        }
-        if (lacks.length > 0) {
-          result = { success: false, message: `材料不足：${lacks.join('、')}` };
-          break;
-        }
-        // 消耗材料
-        for (const cost of nextVehicle.upgradeCost) {
-          this.warehouse.removeItem(cost.category, cost.itemId, cost.amount);
-        }
-        const oldVehicle = getVehicleInfo(this.currentVehicle);
-        this.currentVehicle = nextVehicle.id;
-        this.addLog(`${oldVehicle.name}换成了${nextVehicle.icon}${nextVehicle.name}！一趟最多可招 ${nextVehicle.passengerCapacity} 人。`);
-        result = { success: true, message: `升级为${nextVehicle.icon}${nextVehicle.name}！` };
-        break;
-      }
-
       default:
-        result = { success: false, message: '未知操作' };
+        return { success: false, message: '未知研究操作' };
     }
-    if (result && result.message) this.addLog(result.message);
-    return result;
+  }
+
+  // ====== 内部辅助 ======
+
+  _tickRecruit() {
+    const rs = this.recruitSystem;
+    if (!rs.isRecruiting) return;
+
+    const result = rs.tick(this.characters, (msg) => this.addLog(msg), this.tutorialStep);
+    if (!result) return;
+
+    if (result.tutorialStep != null) {
+      this.tutorialStep = Math.max(this.tutorialStep, result.tutorialStep);
+    }
+    if (result.createdNpcs) {
+      for (const npc of result.createdNpcs) {
+        this.characters.push(npc);
+        this.population++;
+      }
+      this._tryUnlockResearch();
+    }
   }
 
   _findCharacter(id) {
@@ -956,130 +751,6 @@ export class GameState {
     return all.filter(c => c.hasRole('farmer'));
   }
 
-  /**
-   * 刷新候选人池（十选三模式）
-   * 一次性生成 RECRUIT_POOL_SIZE 个候选人
-   */
-  _refreshCandidatePool() {
-    const pool = [];
-    const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-
-    for (let i = 0; i < RECRUIT_POOL_SIZE; i++) {
-      const gender = Math.random() < 0.55 ? 'male' : 'female';
-      const name = generateName(gender, existing);
-      existing.add(name);
-      const age = 18 + Math.floor(Math.random() * 35);
-      const originTrait = rollOriginTrait();
-      const generalTraits = rollGeneralTraits(Math.random() < 0.3 ? 2 : 1);
-      const fate = rollFate();
-      const appearance = generateAppearance(gender, age);
-      pool.push({ name, gender, age, originTrait, generalTraits, fate, appearance });
-    }
-
-    this.recruitCandidatePool = pool;
-    this.recruitHiredCount = 0;
-    const vehicle = getVehicleInfo(this.currentVehicle);
-    this.addLog(`你赶着${vehicle.icon}${vehicle.name}来到村庄，有10位村民愿意跟随你。${vehicle.description}`);
-  }
-
-  /**
-   * 每tick处理招募任务
-   */
-  _tickRecruit() {
-    // 没有招募任务则跳过
-    if (!this.recruitTask) return;
-
-    this.recruitTask.ticksRemaining--;
-
-    if (this.recruitTask.ticksRemaining > 0) return;
-
-    // 时间到
-    if (this.recruitTask.type === 'self') {
-      if (this.recruitTask.phase === 'traveling') {
-        // 亲自去：到达村庄，等待玩家选人
-        this.recruitTask.phase = 'waiting_choice';
-        this.addLog('你到达了附近的村庄，村长带你去见几位愿意跟随的村民...');
-        // 新手教程：推进到选人步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 7) {
-          this.tutorialStep = 7;
-        }
-      } else if (this.recruitTask.phase === 'returning') {
-        // 亲自去：回程完成，批量创建 NPC
-        const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-        const toCreate = this.recruitSelectedCandidates || [];
-        if (toCreate.length > 0) {
-          for (const candidateData of toCreate) {
-            const { npc, name } = this._createNPCFarmer({ candidateData });
-            this.addLog(`${name}（${candidateData.gender === 'male' ? '男' : '女'}，${candidateData.age}岁）加入了你的队伍！`);
-          }
-          this._tryUnlockResearch();
-        }
-        this.addLog(`你赶着${vehicle.icon}${vehicle.name}回到了家。${toCreate.length > 0 ? `带回了 ${toCreate.length} 位新村民！` : ''}`);
-        this.recruitTask = null;
-        this.recruitSelectedCandidates = [];
-        this.recruitHiredCount = 0;
-        // 新手教程：回程完成，推进到完成步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
-          this.tutorialStep = 9;
-        }
-      }
-    } else {
-      // 派人去
-      const vehicle = getVehicleInfo(this.recruitTask.vehicleId);
-      const delegate = this.characters.find(c => c.id === this.recruitTask.delegateId);
-
-      if (this.recruitTask.phase === 'traveling') {
-        // 派人去：到达村庄，按偏好自动挑选，进入回程
-        const preference = this.recruitTask.preference || 'any';
-        const maxHire = vehicle.passengerCapacity;
-        const selected = [];
-
-        // 按偏好从候选池中依次挑最佳，直到坐满
-        const pool = [...this.recruitCandidatePool];
-        while (selected.length < maxHire && pool.length > 0) {
-          const bestIdx = pickBestByPreference(pool, preference);
-          if (bestIdx < 0) break;
-          const [picked] = pool.splice(bestIdx, 1);
-          selected.push(picked);
-        }
-
-        this.recruitSelectedCandidates = selected;
-        this.recruitCandidatePool = [];
-
-        const prefLabel = preference === 'any' ? '' : `（按要求挑了${RECRUIT_PREFERENCES.find(p => p.id === preference)?.label || ''}）`;
-        const msg = selected.length > 0
-          ? `${delegate ? delegate.name : '派出的人'}在村庄挑好了 ${selected.length} 位村民${prefLabel}，正赶${vehicle.icon}${vehicle.name}回来！`
-          : `${delegate ? delegate.name : '派出的人'}没找到合适的人${prefLabel}，正空车赶${vehicle.icon}${vehicle.name}回来...`;
-        this.addLog(msg);
-
-        this.recruitTask.phase = 'returning';
-        this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
-        this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
-      } else if (this.recruitTask.phase === 'returning') {
-        // 派人去：回程完成，批量创建 NPC
-        const toCreate = this.recruitSelectedCandidates || [];
-        if (toCreate.length > 0) {
-          for (const candidateData of toCreate) {
-            const { npc, name } = this._createNPCFarmer({ candidateData });
-            this.addLog(`${name}（${candidateData.gender === 'male' ? '男' : '女'}，${candidateData.age}岁）加入了你的队伍！`);
-          }
-          this._tryUnlockResearch();
-        }
-        this.addLog(`${delegate ? delegate.name : '派出的人'}赶着${vehicle.icon}${vehicle.name}回到了家。${toCreate.length > 0 ? `带回了 ${toCreate.length} 位新村民！` : ''}`);
-        this.recruitTask = null;
-        this.recruitSelectedCandidates = [];
-        this.recruitHiredCount = 0;
-        // 新手教程：回程完成，推进到完成步骤
-        if (this.tutorialStep >= 0 && this.tutorialStep < 9) {
-          this.tutorialStep = 9;
-        }
-      }
-    }
-  }
-
-  /**
-   * 首次招募成功后处理（仅标记事件，不再自动解锁研究系统）
-   */
   _tryUnlockResearch() {
     if (this.triggeredEvents['recruit'] === 'accepted') return;
     this.player.roles = ['farmer_leader', 'farmer'];
@@ -1088,104 +759,51 @@ export class GameState {
     this.triggeredEvents['recruit'] = 'accepted';
   }
 
-  /**
-   * 特质揭示：玩家对 NPC 特质的了解
-   * 规则：
-   *   - 同岗共事：玩家与 NPC 共享角色 → 每天积累洞察
-   *   - 知客感知：有熟络级知客 → 对所有 NPC 积累洞察（不限制同岗）
-   */
   _tickTraitInsight() {
     const playerRoles = new Set(this.player.roles);
-
-    // 是否有「熟络」及以上的知客 NPC（可跨岗感知）
     const hasQualifiedZhike = this.characters.some(
       npc => !npc.isRetired && npc.hasPost('zhike') && getHRLevel(npc.hrExp || 0).level >= 2
     );
-
     for (const npc of this.characters) {
       if (npc.isRetired) continue;
-
-      if (hasQualifiedZhike) {
+      if (hasQualifiedZhike || npc.roles.some(r => playerRoles.has(r))) {
         npc.playerTraitInsight = (npc.playerTraitInsight || 0) + TRAIT_INSIGHT_PER_DAY;
-      } else {
-        const sharesRole = npc.roles.some(r => playerRoles.has(r));
-        if (sharesRole) {
-          npc.playerTraitInsight = (npc.playerTraitInsight || 0) + TRAIT_INSIGHT_PER_DAY;
-        }
       }
     }
   }
 
-  /**
-   * 每年推进 NPC 年龄 + 退休检查
-   */
   _tickAging() {
     for (const npc of this.characters) {
       npc.age++;
-      // 检查是否到达退休年龄
       if (npc.age >= npc.retireAge && !npc.isRetired) {
         this.addLog(`${npc.name}（${npc.gender === 'male' ? '男' : '女'}，${npc.age}岁）已经到了退休的年纪，不再参与劳作了。`);
-        // 退休清除功法和岗位
         if (npc.learnedGongfu.length > 0) {
           this.addLog(`${npc.name}所学的功法随之消散...`);
         }
         npc.onRetire();
       }
     }
-    // 玩家也 aging
     this.player.age++;
   }
 
-  /**
-   * 创建一个随机农民 NPC 并加入队伍
-   * @param {{ minKnowledge?: number, avoidExistingNames?: boolean, candidateData?: object }} opts
-   * @returns {{ npc: Character, name: string }}
-   */
-  _createNPCFarmer(opts = {}) {
-    const { minKnowledge = 3, avoidExistingNames = false, candidateData } = opts;
-
-    // 性别 & 名字
-    const gender = candidateData?.gender || (Math.random() < 0.55 ? 'male' : 'female');
-    let name;
-    if (candidateData?.name) {
-      name = candidateData.name;
-    } else {
-      const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
-      name = generateName(gender, existing);
-    }
-
-    // 年龄
-    const age = candidateData?.age || (18 + Math.floor(Math.random() * 35));
-
-    // 出身特质（必须有一个）
-    const originTrait = candidateData?.originTrait || rollOriginTrait();
-
-    // 通用特质（0-2个）
-    const generalTraits = candidateData?.generalTraits || rollGeneralTraits(Math.random() < 0.4 ? 2 : 1);
+  /** 创建随机 NPC（事件系统使用） */
+  _createNPCFromRandom() {
+    const gender = Math.random() < 0.55 ? 'male' : 'female';
+    const existing = new Set([this.player.name, ...this.characters.map(c => c.name)]);
+    const name = generateName(gender, existing);
+    const age = 18 + Math.floor(Math.random() * 35);
+    const originTrait = rollOriginTrait();
+    const generalTraits = rollGeneralTraits(Math.random() < 0.4 ? 2 : 1);
     const allTraits = [originTrait, ...generalTraits];
+    const fate = rollFate();
+    const appearance = generateAppearance(gender, age);
 
-    // 命格（隐藏）
-    const fate = candidateData?.fate || rollFate();
-
-    // 外貌
-    const appearance = candidateData?.appearance || generateAppearance(gender, age);
-
-    // 创建角色
     const npc = new Character({
       name, roles: ['farmer'], isPlayer: false,
       gender, age, originTrait, traits: allTraits, fate, appearance,
     });
-
-    // 如果有候选人的耕种经验，覆盖
-    if (candidateData?.farming) {
-      npc.knowledgeAttributes.farming = candidateData.farming;
-    } else {
-      npc.knowledgeAttributes.farming = minKnowledge + Math.floor(Math.random() * 5);
-    }
-
-    this.characters.push(npc);
-    this.population++;
-    return { npc, name };
+    npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
+    return npc;
   }
 
   addLog(msg) {
@@ -1195,9 +813,6 @@ export class GameState {
   addNotification(msg) { this.notifications.push(msg); }
   clearNotifications() { this.notifications = []; }
 
-  /**
-   * 记录每日快照，用于平衡分析和数据导出
-   */
   recordStats() {
     const plots = this.farm.plots;
     if (plots.length === 0) return;
@@ -1227,14 +842,13 @@ export class GameState {
     this.statsHistory.push(snap);
   }
 
-  // ====== 存档系统（委托给 SaveSystem）======
+  // ====== 存档系统 ======
   save(slot = 0) { return SaveSystem.save(this, slot); }
   static load(slot = 0) { return SaveSystem.load(slot, GameState); }
   static loadAny() { return SaveSystem.loadAny(GameState); }
   static getSaveSlots() { return SaveSystem.getSaveSlots(); }
   static hasSave() { return SaveSystem.hasSave(); }
 
-  // 暴露给 SaveSystem 使用的反序列化辅助方法
   static _charFromJSON = Character.fromJSON;
   static _farmFromJSON = FarmSystem.fromJSON;
   static _researchFromJSON = ResearchSystem.fromJSON;
