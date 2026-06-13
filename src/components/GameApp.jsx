@@ -374,7 +374,7 @@ export default function GameApp() {
                   return (
                     <button
                       key={jobId}
-                      onClick={() => { sfxTab(); onAction('switch_job', { jobId }); }}
+                      onClick={() => { sfxTab(); setActiveTab('job'); onAction('switch_job', { jobId }); }}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg whitespace-nowrap transition-colors shrink-0 ${
                         isActive
                           ? `bg-${meta.color}-900/40 text-${meta.color}-400 border border-${meta.color}-700/50`

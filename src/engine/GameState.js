@@ -1051,13 +1051,24 @@ export class GameState {
     }
     const oldJob = this.currentJob;
     this.currentJob = jobId;
-    // 更新玩家角色
+    // 更新玩家角色和岗位
     const jobToRole = {
       farmer: 'farmer', miner: 'farmer', smelter: 'farmer',
       herb_prepper: 'farmer', alchemist: 'farmer', furnace_tender: 'farmer',
       trader: 'farmer', porter: 'farmer',
     };
+    const jobToPost = {
+      farmer: [],
+      miner: ['tiedao'],
+      smelter: ['tiedao'],
+      herb_prepper: [],
+      alchemist: ['miaoshou'],
+      furnace_tender: [],
+      trader: [],
+      porter: [],
+    };
     this.player.roles = [jobToRole[jobId] || 'farmer'];
+    this.player.posts = jobToPost[jobId] || [];
 
     const jobNames = {
       farmer: '农夫', miner: '矿工', smelter: '炼铁匠',
