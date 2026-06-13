@@ -21,6 +21,10 @@ export const DEFAULT_MONTHLY_SALARY = {
   alchemist: 4, furnace_tender: 2, trader: 3, porter: 1.5,
 };
 
+// 加班制时薪下限（文）
+const MIN_HOURLY_RATE = 9; // 9文/时，最低标准
+const WEN_PER_LIANG = 100; // 1两 = 100文
+
 const BACKGROUND_SALARY_MULT = {
   village_farmer: 1.0, village_worker: 1.1,
   city_youth: 1.5, city_scholar: 2.0, cultivator: 3.0,
@@ -80,15 +84,18 @@ export class FinanceSystem {
     let basePay, overtimePay = 0;
 
     if (payMode === 'overtime') {
-      // 加班制：按实际工时计费
+      // 加班制：时薪单位为"文"，最低9文/时
+      const hourlyRateWen = Math.max(MIN_HOURLY_RATE, settings.hourlyRate || 10);
       const workerState = character._workerState;
       const actualHours = (workerState?.workHours || standardHours) + (workerState?.overtimeHours || 0);
-      const hourlyRate = settings.hourlyRate || (baseSalary / (standardHours * 30));
-      basePay = actualHours * 30 * hourlyRate;
+
+      // 基本工资（按时薪×工时，转为两）
+      basePay = (hourlyRateWen * actualHours * 30) / WEN_PER_LIANG;
+
       // 超出标准工时的部分按加班费率
       if (actualHours > standardHours) {
         const extraHours = actualHours - standardHours;
-        overtimePay = extraHours * 30 * hourlyRate * (overtimeRate - 1); // 额外部分
+        overtimePay = (hourlyRateWen * extraHours * 30 * (overtimeRate - 1)) / WEN_PER_LIANG;
       }
     } else {
       // 包薪制：固定月薪
@@ -100,11 +107,11 @@ export class FinanceSystem {
     const welfareCost = (settings.mealAllowance ? 0.5 : 0) + (settings.housing ? 0.3 : 0);
 
     return {
-      base: Math.round(basePay * 10) / 10,
-      overtime: Math.round(overtimePay * 10) / 10,
-      benefit: Math.round(benefitCost * 10) / 10,
-      welfare: Math.round(welfareCost * 10) / 10,
-      total: Math.round((basePay + overtimePay + benefitCost + welfareCost) * 10) / 10,
+      base: Math.round(basePay * 100) / 100,
+      overtime: Math.round(overtimePay * 100) / 100,
+      benefit: Math.round(benefitCost * 100) / 100,
+      welfare: Math.round(welfareCost * 100) / 100,
+      total: Math.round((basePay + overtimePay + benefitCost + welfareCost) * 100) / 100,
     };
   }
 

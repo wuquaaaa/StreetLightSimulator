@@ -443,10 +443,10 @@ function WorkerWelfareTab({ game, onAction }) {
           ) : (
             <>
               <div>
-                <label className="text-[10px] text-stone-500 block mb-1">时薪（银两/时）</label>
-                <input type="number" step="0.01" min="0"
-                  value={localDefault.hourlyRate || (localDefault.baseSalary / (localDefault.standardHours * 30)).toFixed(3)}
-                  onChange={(e) => setLocalDefault(s => ({ ...s, hourlyRate: parseFloat(e.target.value) || 0 }))}
+                <label className="text-[10px] text-stone-500 block mb-1">时薪（文/时，最低9文）</label>
+                <input type="number" step="1" min="9" max="100"
+                  value={localDefault.hourlyRate || 10}
+                  onChange={(e) => setLocalDefault(s => ({ ...s, hourlyRate: Math.max(9, parseInt(e.target.value) || 9) }))}
                   className="w-full bg-stone-700 text-amber-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-amber-500 text-center"
                 />
               </div>
