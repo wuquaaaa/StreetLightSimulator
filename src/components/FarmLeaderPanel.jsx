@@ -489,25 +489,25 @@ function WorkerWelfareTab({ game, onAction }) {
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between">
             <span className="text-stone-500">基本工资</span>
-            <span className="text-amber-400">{cost.totalBase.toFixed(2)} 银两</span>
+            <span className="text-amber-400">{cost.totalBase.toFixed(2)}两 ({Math.round(cost.totalBase * 100)}文)</span>
           </div>
           {cost.totalOvertime > 0 && (
             <div className="flex justify-between">
               <span className="text-stone-500">加班费</span>
-              <span className="text-orange-400">{cost.totalOvertime.toFixed(2)} 银两</span>
+              <span className="text-orange-400">{cost.totalOvertime.toFixed(2)}两 ({Math.round(cost.totalOvertime * 100)}文)</span>
             </div>
           )}
           <div className="flex justify-between">
             <span className="text-stone-500">五险一金</span>
-            <span className="text-blue-400">{cost.totalBenefit.toFixed(2)} 银两</span>
+            <span className="text-blue-400">{cost.totalBenefit.toFixed(2)}两</span>
           </div>
           <div className="flex justify-between">
             <span className="text-stone-500">福利支出</span>
-            <span className="text-green-400">{cost.totalWelfare.toFixed(2)} 银两</span>
+            <span className="text-green-400">{cost.totalWelfare.toFixed(2)}两</span>
           </div>
-          <div className="flex justify-between font-bold">
+          <div className="flex justify-between font-bold border-t border-stone-700/30 pt-1">
             <span className="text-stone-400">总人力成本</span>
-            <span className="text-red-400">{cost.total.toFixed(2)} 银两/月</span>
+            <span className="text-red-400">{cost.total.toFixed(2)}两 ({Math.round(cost.total * 100)}文)/月</span>
           </div>
         </div>
         <div className="mt-2 pt-2 border-t border-stone-700/30 text-[10px] text-stone-600">
@@ -530,18 +530,21 @@ function WorkerWelfareTab({ game, onAction }) {
             const morale = state?.morale || 70;
             const salary = getWorkerSalary(farmer);
             const hours = getWorkerHours(farmer);
+            const payMode = localDefault.payMode || 'salary';
             const hasOverride = editingSalary[farmer.id] != null || editingHours[farmer.id] != null;
+            const salaryLabel = payMode === 'overtime' ? `${Math.round(salary * 100)}文` : `${salary.toFixed(2)}两`;
             return (
               <div key={farmer.id} className={`flex items-center text-xs py-1 border-b border-stone-800/30 last:border-0 ${hasOverride ? 'bg-amber-900/10' : ''}`}>
                 <span className="text-stone-300 w-16 truncate">{farmer.name}</span>
-                <div className="w-16 flex items-center justify-center">
-                  <input type="number" step="0.1" min="0" value={salary}
+                <div className="w-20 flex items-center justify-center gap-0.5">
+                  <input type="number" step={payMode === 'overtime' ? 1 : 0.1} min="0" value={salary}
                     onChange={(e) => {
                       const v = parseFloat(e.target.value);
                       if (!isNaN(v) && v >= 0) setEditingSalary(prev => ({ ...prev, [farmer.id]: v }));
                     }}
                     className="w-12 bg-stone-700 text-amber-400 text-[10px] px-1 py-0.5 rounded text-center outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  <span className="text-[9px] text-stone-600">{payMode === 'overtime' ? '文' : '两'}</span>
                 </div>
                 <div className="w-14 flex items-center justify-center">
                   <input type="number" step="1" min="1" max="16" value={hours}
