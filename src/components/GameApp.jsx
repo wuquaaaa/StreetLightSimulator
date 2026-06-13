@@ -28,7 +28,7 @@ export default function GameApp() {
     return loaded || new GameState('旅人');
   });
   const [, setVersion] = useState(0);
-  const [activeTab, setActiveTab] = useState('farm');
+  const [activeTab, setActiveTab] = useState('job');
   const [activeRoleTab, setActiveRoleTab] = useState(null);
   const [pendingNotifs, setPendingNotifs] = useState([]);
   const [paused, setPaused] = useState(false);
@@ -200,10 +200,27 @@ export default function GameApp() {
   const showFarmSubTabs = farmRoles.length > 1;
   const currentRoleTab = (activeRoleTab && farmRoles.includes(activeRoleTab)) ? activeRoleTab : farmRoles[0] || 'farmer';
 
-  // 侧边栏 tab 列表（司务堂只在建好后显示）
+  // 岗位定义
+  const JOB_META = {
+    farmer:          { label: '农夫',   icon: '🌾', color: 'green' },
+    miner:           { label: '矿工',   icon: '⛏️', color: 'amber' },
+    smelter:         { label: '炼铁匠', icon: '🔥', color: 'orange' },
+    herb_prepper:    { label: '药童',   icon: '🌿', color: 'emerald' },
+    alchemist:       { label: '炼丹师', icon: '⚗️', color: 'purple' },
+    furnace_tender:  { label: '炉工',   icon: '🛠️', color: 'blue' },
+    trader:          { label: '贩子',   icon: '💰', color: 'yellow' },
+    porter:          { label: '运工',   icon: '📦', color: 'stone' },
+  };
+
+  // 已解锁的岗位列表（有序）
+  const jobOrder = ['farmer', 'miner', 'smelter', 'furnace_tender', 'herb_prepper', 'alchemist', 'trader', 'porter'];
+  const unlockedJobList = jobOrder.filter(j => game.unlockedJobs?.has(j));
+  const currentJob = game.currentJob || 'farmer';
+
+  // 侧边栏 tab 列表（管理类tab）
+  const currentJobMeta = JOB_META[currentJob] || JOB_META.farmer;
   const sideTabs = [
-    { id: 'farm', label: '农田', icon: Wheat },
-    { id: 'workshop', label: '工坊', icon: Pickaxe },
+    { id: 'job', label: '当前岗位', icon: Wheat, highlight: true },
     { id: 'village', label: '附近村庄', icon: MapPin },
     { id: 'building', label: '建筑', icon: Hammer },
     ...(game.gatherSystem?.unlocked
@@ -214,12 +231,19 @@ export default function GameApp() {
     { id: 'character', label: '角色', icon: User },
   ];
 
-  const renderFarmContent = () => {
-    // 农民 → 详细视图(带进度条)；农民队长 → 管理页面(紧凑方格)
-    if (currentRoleTab === 'farmer_leader') {
-      return <FarmLeaderPanel game={game} onAction={handleAction} />;
+  const renderJobContent = () => {
+    switch (currentJob) {
+      case 'farmer':
+        return currentRoleTab === 'farmer_leader'
+          ? <FarmLeaderPanel game={game} onAction={handleAction} />
+          : <FarmPanel game={game} onAction={handleAction} />;
+      case 'miner':
+      case 'smelter':
+      case 'furnace_tender':
+        return <CrafterPanel game={game} onAction={handleAction} />;
+      default:
+        return <FarmPanel game={game} onAction={handleAction} />;
     }
-    return <FarmPanel game={game} onAction={handleAction} />;
   };
 
   return (
@@ -230,7 +254,10 @@ export default function GameApp() {
         {/* 左侧导航 */}
         <div className="w-28 bg-stone-900 border-r border-stone-700/50 flex flex-col py-2 shrink-0">
           {sideTabs.map(tab => {
-            const Icon = tab.icon;
+            const Icon = tab.id === 'job' ? (() => {
+              const meta = JOB_META[currentJob];
+              return ({ size, className }) => <span className={className} style={{ fontSize: size }}>{meta?.icon || '🌾'}</span>;
+            })() : tab.icon;
             return (
               <button
                 key={tab.id}
@@ -239,12 +266,22 @@ export default function GameApp() {
                   activeTab === tab.id
                     ? (tab.id === 'research' ? 'bg-cyan-900/20 text-cyan-400 border-r-2 border-cyan-500'
                       : tab.id === 'gather' ? 'bg-green-900/20 text-green-400 border-r-2 border-green-500'
+                      : tab.highlight ? 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500'
                       : 'bg-amber-900/20 text-amber-400 border-r-2 border-amber-500')
                     : 'text-stone-400 hover:bg-stone-800 hover:text-stone-200'
                 }`}
               >
-                <Icon size={18} />
-                {tab.label}
+                {tab.id === 'job' ? (
+                  <>
+                    <span className="text-lg">{JOB_META[currentJob]?.icon || '🌾'}</span>
+                    <span className="text-[10px]">{JOB_META[currentJob]?.label || '岗位'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Icon size={18} />
+                    {tab.label}
+                  </>
+                )}
               </button>
             );
           })}
@@ -318,8 +355,36 @@ export default function GameApp() {
 
         {/* 主内容区 */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 岗位切换栏 */}
+          {activeTab === 'job' && (
+            <div className="bg-stone-900/50 border-b border-stone-700/30 px-3 py-2 shrink-0">
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {unlockedJobList.map(jobId => {
+                  const meta = JOB_META[jobId];
+                  if (!meta) return null;
+                  const isActive = currentJob === jobId;
+                  return (
+                    <button
+                      key={jobId}
+                      onClick={() => { sfxTab(); onAction('switch_job', { jobId }); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg whitespace-nowrap transition-colors shrink-0 ${
+                        isActive
+                          ? `bg-${meta.color}-900/40 text-${meta.color}-400 border border-${meta.color}-700/50`
+                          : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50 border border-transparent'
+                      }`}
+                    >
+                      <span>{meta.icon}</span>
+                      {meta.label}
+                      {isActive && <span className="text-[9px] text-stone-500 ml-0.5">当前</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* 多角色子tab */}
-          {activeTab === 'farm' && showFarmSubTabs && (
+          {activeTab === 'job' && currentJob === 'farmer' && showFarmSubTabs && (
             <div className="bg-stone-900/50 border-b border-stone-700/30 px-5 pt-2 flex gap-1 shrink-0">
               {farmRoles.map(r => {
                 const info = getRoleInfo(r);
@@ -342,8 +407,7 @@ export default function GameApp() {
           )}
 
           <div className="flex-1 overflow-y-auto p-5">
-            {activeTab === 'farm' && renderFarmContent()}
-            {activeTab === 'workshop' && <CrafterPanel game={game} onAction={handleAction} />}
+            {activeTab === 'job' && renderJobContent()}
             {activeTab === 'village' && <RecruitPanel game={game} onAction={handleAction} />}
             {activeTab === 'building' && <BuildPanel game={game} onAction={handleAction} />}
             {activeTab === 'gather' && <GatherPanel game={game} onAction={handleAction} />}

@@ -60,6 +60,9 @@ export const SaveSystem = {
       buildQueue: game.buildQueue || [],
       // 司务堂
       hallBuilt: game.hallBuilt || false,
+      // 岗位系统
+      unlockedJobs: [...(game.unlockedJobs || ['farmer'])],
+      currentJob: game.currentJob || 'farmer',
       // 研究系统
       researchSystem: game.researchSystem.toJSON(),
       // 后山采集系统
@@ -162,6 +165,10 @@ export const SaveSystem = {
     if (data.researchSystem && data.researchSystem.unlocked) {
       game.hallBuilt = true;
     }
+
+    // 岗位系统（兼容旧存档）
+    game.unlockedJobs = new Set(data.unlockedJobs || ['farmer']);
+    game.currentJob = data.currentJob || 'farmer';
 
     // 研究系统
     if (data.researchSystem) {

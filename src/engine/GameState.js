@@ -118,6 +118,10 @@ export class GameState {
     this.buildQueue = [];
     this.hallBuilt = false;
 
+    // 岗位解锁系统
+    this.unlockedJobs = new Set(['farmer']);  // 初始只有农夫
+    this.currentJob = 'farmer';              // 玩家当前岗位
+
     this.log = [
       '你来到了一片陌生的土地。',
       '这里有几块空闲的农田和一间公共仓库。',
@@ -249,6 +253,9 @@ export class GameState {
     if (this.day > 1 && (this.day - 1) % 28 === 0) {
       this._tickAging();
     }
+
+    // 检查岗位解锁
+    this._checkJobUnlocks();
 
     // 冬天冻害
     if (this.season === '冬') {
@@ -616,6 +623,10 @@ export class GameState {
         result = { success: true, message: `${postId}岗位工资设置已更新` };
         break;
       }
+      case 'switch_job': {
+        result = this.switchJob(params.jobId);
+        break;
+      }
       case 'mine_ore': {
         const { veinId } = params;
         result = this.miningSystem.mine(veinId, this.player);
@@ -957,6 +968,80 @@ export class GameState {
         : 0,
     };
     this.statsHistory.push(snap);
+  }
+
+  // ====== 岗位解锁系统 ======
+
+  /** 解锁新岗位 */
+  unlockJob(jobId) {
+    if (this.unlockedJobs.has(jobId)) return false;
+    this.unlockedJobs.add(jobId);
+    const jobNames = {
+      miner: '矿工', smelter: '炼铁匠', herb_prepper: '药童',
+      alchemist: '炼丹师', furnace_tender: '炉工', trader: '贩子', porter: '运工',
+    };
+    this.addLog(`🔓 新岗位解锁: ${jobNames[jobId] || jobId}`);
+    this.addNotification(`新岗位解锁: ${jobNames[jobId] || jobId}`);
+    return true;
+  }
+
+  /** 切换玩家当前岗位 */
+  switchJob(jobId) {
+    if (!this.unlockedJobs.has(jobId)) {
+      return { success: false, message: '该岗位尚未解锁' };
+    }
+    if (this.currentJob === jobId) {
+      return { success: false, message: '你已经在该岗位上了' };
+    }
+    const oldJob = this.currentJob;
+    this.currentJob = jobId;
+    // 更新玩家角色
+    const jobToRole = {
+      farmer: 'farmer', miner: 'farmer', smelter: 'farmer',
+      herb_prepper: 'farmer', alchemist: 'farmer', furnace_tender: 'farmer',
+      trader: 'farmer', porter: 'farmer',
+    };
+    this.player.roles = [jobToRole[jobId] || 'farmer'];
+
+    const jobNames = {
+      farmer: '农夫', miner: '矿工', smelter: '炼铁匠',
+      herb_prepper: '药童', alchemist: '炼丹师', furnace_tender: '炉工',
+      trader: '贩子', porter: '运工',
+    };
+    this.addLog(`你转换到了「${jobNames[jobId]}」岗位`);
+    return { success: true, message: `已切换到${jobNames[jobId]}` };
+  }
+
+  /** 检查是否应该解锁新岗位（每日检查） */
+  _checkJobUnlocks() {
+    // 矿工: 招募第一个NPC后解锁
+    if (this.characters.length >= 1 && !this.unlockedJobs.has('miner')) {
+      this.unlockJob('miner');
+    }
+    // 炼铁匠: 矿工解锁后
+    if (this.unlockedJobs.has('miner') && !this.unlockedJobs.has('smelter')) {
+      this.unlockJob('smelter');
+    }
+    // 炉工: 炼铁匠解锁后
+    if (this.unlockedJobs.has('smelter') && !this.unlockedJobs.has('furnace_tender')) {
+      this.unlockJob('furnace_tender');
+    }
+    // 药童: 研究系统解锁后
+    if (this.researchSystem?.unlocked && !this.unlockedJobs.has('herb_prepper')) {
+      this.unlockJob('herb_prepper');
+    }
+    // 炼丹师: 药童解锁后
+    if (this.unlockedJobs.has('herb_prepper') && !this.unlockedJobs.has('alchemist')) {
+      this.unlockJob('alchemist');
+    }
+    // 贩子: 建造商铺后
+    if (this.buildings.includes('shop') && !this.unlockedJobs.has('trader')) {
+      this.unlockJob('trader');
+    }
+    // 运工: 建造后山小径后
+    if (this.buildings.includes('mountain_trail') && !this.unlockedJobs.has('porter')) {
+      this.unlockJob('porter');
+    }
   }
 
   // ====== 存档系统 ======
