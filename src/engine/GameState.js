@@ -121,6 +121,7 @@ export class GameState {
     this.buildings = [];
     this.buildQueue = [];
     this.hallBuilt = false;
+    this.dormitoryCapacity = 0;  // 宿舍床位总数
 
     // 岗位解锁系统
     this.unlockedJobs = new Set(['farmer']);  // 初始只有农夫

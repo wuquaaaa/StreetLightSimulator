@@ -462,19 +462,30 @@ function WorkerWelfareTab({ game, onAction }) {
           )}
         </div>
         <div className="flex gap-3 mt-3">
-          <button onClick={() => setLocalDefault(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
+          <button onClick={() => setLocalDefault(s => ({ ...s, freeFood: !s.freeFood }))}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-              localDefault.mealAllowance ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
+              localDefault.freeFood ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
             }`}>
-            餐补 {localDefault.mealAllowance ? '\u2713' : '\u2717'}
+            包吃 {localDefault.freeFood ? '\u2713' : '\u2717'}
           </button>
-          <button onClick={() => setLocalDefault(s => ({ ...s, housing: !s.housing }))}
+          <button onClick={() => {
+            if (!localDefault.freeHousing && (game.dormitoryCapacity || 0) <= 0) return;
+            setLocalDefault(s => ({ ...s, freeHousing: !s.freeHousing }));
+          }}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-              localDefault.housing ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
-            }`}>
-            住房 {localDefault.housing ? '\u2713' : '\u2717'}
+              localDefault.freeHousing ? 'bg-green-800/60 text-green-300'
+                : (game.dormitoryCapacity || 0) <= 0 ? 'bg-stone-700/20 text-stone-600 cursor-not-allowed'
+                : 'bg-stone-700/40 text-stone-500'
+            }`}
+            title={(game.dormitoryCapacity || 0) <= 0 ? '需要先建造宿舍' : ''}>
+            包住 {localDefault.freeHousing ? '\u2713' : '\u2717'}
           </button>
         </div>
+        {(game.dormitoryCapacity || 0) > 0 && (
+          <div className="text-[10px] text-stone-600 mt-1">
+            宿舍床位: {game.dormitoryCapacity} 间
+          </div>
+        )}
         <div className="flex justify-end mt-3">
           <button onClick={handleSaveDefault}
             className="px-3 py-1.5 text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 rounded transition-colors">
@@ -502,8 +513,8 @@ function WorkerWelfareTab({ game, onAction }) {
             <span className="text-blue-400">{cost.totalBenefit.toFixed(2)}两</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-stone-500">福利支出</span>
-            <span className="text-green-400">{cost.totalWelfare.toFixed(2)}两</span>
+            <span className="text-stone-500">包吃(粮食)</span>
+            <span className="text-green-400">{cost.totalFood.toFixed(2)}两</span>
           </div>
           <div className="flex justify-between font-bold border-t border-stone-700/30 pt-1">
             <span className="text-stone-400">总人力成本</span>

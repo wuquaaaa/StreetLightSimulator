@@ -92,4 +92,26 @@ export const BUILDING_DEFS = [
     story: '人多了就该有规矩。你决定建造一间司务堂来管理事务。',
     lockedReason: '需要先招募村民',
   },
+  // ====== 生活类 ======
+  {
+    id: 'dormitory',
+    name: '宿舍',
+    icon: '🏠',
+    description: '盖几间土坯房，让工人们有地方住。每间宿舍可住4人。',
+    category: 'living',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 15 },
+      { category: 'material', itemId: 'stone', name: '石材', amount: 8 },
+    ],
+    buildDays: 2,
+    unique: false, // 可以建多间
+    capacity: 4,   // 每间住4人
+    requires: (game) => game.characters.length >= 1,
+    onBuilt: (game) => {
+      if (!game.dormitoryCapacity) game.dormitoryCapacity = 0;
+      game.dormitoryCapacity += 4;
+    },
+    story: '工人们晚上只能睡在仓库角落。你找了些木头和石头，盖了两间土坯房。虽然简陋，但总算有张床了。',
+    lockedReason: '需要先招募工人',
+  },
 ];

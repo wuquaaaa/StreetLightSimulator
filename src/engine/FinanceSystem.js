@@ -45,12 +45,12 @@ export class FinanceSystem {
     for (const [post, salary] of Object.entries(DEFAULT_MONTHLY_SALARY)) {
       this.wageSettings[post] = {
         baseSalary: salary,
-        payMode: 'salary',        // 'salary' 包薪制 | 'overtime' 加班制
+        payMode: 'salary',
         standardHours: 8,
-        overtimeRate: 1.5,        // 加班制时的加班费率
-        hourlyRate: null,         // 加班制时的时薪（null=自动计算）
-        mealAllowance: false,
-        housing: false,
+        overtimeRate: 1.5,
+        hourlyRate: null,
+        freeFood: false,       // 包吃：消耗仓库粮食
+        freeHousing: false,    // 包住：占用宿舍床位
         insurance: true,
       };
     }
@@ -104,19 +104,22 @@ export class FinanceSystem {
 
     const benefitRate = this._getBenefitRate(postId);
     const benefitCost = basePay * benefitRate;
-    const welfareCost = (settings.mealAllowance ? 0.5 : 0) + (settings.housing ? 0.3 : 0);
+
+    // 包吃：每人每月消耗5单位粮食
+    const foodCost = settings.freeFood ? 0.5 : 0; // 0.5两/月（粮食折价）
+    // 包住：不额外花钱，但需要宿舍床位
 
     return {
       base: Math.round(basePay * 100) / 100,
       overtime: Math.round(overtimePay * 100) / 100,
       benefit: Math.round(benefitCost * 100) / 100,
-      welfare: Math.round(welfareCost * 100) / 100,
-      total: Math.round((basePay + overtimePay + benefitCost + welfareCost) * 100) / 100,
+      food: Math.round(foodCost * 100) / 100,
+      total: Math.round((basePay + overtimePay + benefitCost + foodCost) * 100) / 100,
     };
   }
 
   calculateMonthlyCost(allCharacters) {
-    let totalBase = 0, totalOvertime = 0, totalBenefit = 0, totalWelfare = 0;
+    let totalBase = 0, totalOvertime = 0, totalBenefit = 0, totalFood = 0;
     for (const char of allCharacters) {
       if (char.isRetired || char.isPlayer) continue;
       const postId = char.posts?.[0] || 'farmer';
@@ -124,9 +127,9 @@ export class FinanceSystem {
       totalBase += wage.base;
       totalOvertime += wage.overtime;
       totalBenefit += wage.benefit;
-      totalWelfare += wage.welfare;
+      totalFood += wage.food;
     }
-    return { totalBase, totalOvertime, totalBenefit, totalWelfare, total: totalBase + totalOvertime + totalBenefit + totalWelfare };
+    return { totalBase, totalOvertime, totalBenefit, totalFood, total: totalBase + totalOvertime + totalBenefit + totalFood };
   }
 
   processMonthlyPayroll(allCharacters, logFn) {
