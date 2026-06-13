@@ -369,13 +369,18 @@ function WorkerWelfareTab({ game, onAction }) {
   const finance = game.financeSystem;
   const workerSys = game.workerSystem;
 
-  const wageSettings = finance.wageSettings['farmer'] || { baseSalary: 1 };
-  const [localSettings, setLocalSettings] = useState({ ...wageSettings });
+  const defaultSettings = finance.wageSettings['farmer'] || { baseSalary: 1.00, standardHours: 8 };
+  const [localDefault, setLocalDefault] = useState({ ...defaultSettings });
+  const [editingSalary, setEditingSalary] = useState({});
+  const [editingHours, setEditingHours] = useState({});
 
-  const handleSave = () => {
-    finance.setWageSettings('farmer', localSettings);
-    onAction('set_wage_settings', { postId: 'farmer', settings: localSettings });
+  const handleSaveDefault = () => {
+    finance.setWageSettings('farmer', localDefault);
+    onAction('set_wage_settings', { postId: 'farmer', settings: localDefault });
   };
+
+  const getWorkerSalary = (f) => editingSalary[f.id] ?? localDefault.baseSalary;
+  const getWorkerHours = (f) => editingHours[f.id] ?? localDefault.standardHours;
 
   const cost = finance.calculateMonthlyCost(farmers);
   const benefitRate = Object.values(BENEFIT_RATES).reduce((s, r) => s + r, 0);
@@ -389,120 +394,133 @@ function WorkerWelfareTab({ game, onAction }) {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-stone-500">国库</span>
-          <span className="text-sm text-amber-400 font-bold">{finance.treasury} 银两</span>
+          <span className="text-sm text-amber-400 font-bold">{finance.treasury.toFixed(2)} 银两</span>
         </div>
       </div>
 
-      {/* 工资设置 */}
+      {/* 默认设置 */}
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
         <div className="text-xs text-stone-400 font-semibold mb-3 flex items-center gap-1.5">
-          <Coins size={12} /> 农夫岗位月薪设置
+          <Coins size={12} /> 默认设置（新工人适用）
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-[10px] text-stone-500 block mb-1">月薪（银两/月）</label>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: Math.max(0.5, +(s.baseSalary - 0.5).toFixed(1)) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Minus size={10} />
-              </button>
-              <span className="text-sm text-amber-400 font-bold w-12 text-center">{localSettings.baseSalary}</span>
-              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: +(s.baseSalary + 0.5).toFixed(1) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Plus size={10} />
-              </button>
-            </div>
+            <input type="number" step="0.1" min="0"
+              value={localDefault.baseSalary}
+              onChange={(e) => setLocalDefault(s => ({ ...s, baseSalary: parseFloat(e.target.value) || 0 }))}
+              className="w-full bg-stone-700 text-amber-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-amber-500 text-center"
+            />
           </div>
           <div>
             <label className="text-[10px] text-stone-500 block mb-1">标准工时（小时/天）</label>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setLocalSettings(s => ({ ...s, standardHours: Math.max(4, s.standardHours - 1) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Minus size={10} />
-              </button>
-              <span className="text-sm text-blue-400 font-bold w-12 text-center">{localSettings.standardHours}</span>
-              <button onClick={() => setLocalSettings(s => ({ ...s, standardHours: Math.min(12, s.standardHours + 1) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Plus size={10} />
-              </button>
-            </div>
+            <input type="number" step="1" min="1" max="16"
+              value={localDefault.standardHours}
+              onChange={(e) => setLocalDefault(s => ({ ...s, standardHours: parseInt(e.target.value) || 8 }))}
+              className="w-full bg-stone-700 text-blue-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500 text-center"
+            />
           </div>
         </div>
-
         <div className="flex gap-3 mt-3">
-          <button onClick={() => setLocalSettings(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
+          <button onClick={() => setLocalDefault(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-              localSettings.mealAllowance ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
+              localDefault.mealAllowance ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
             }`}>
-            餐补 {localSettings.mealAllowance ? '\u2713' : '\u2717'}
+            餐补 {localDefault.mealAllowance ? '\u2713' : '\u2717'}
           </button>
-          <button onClick={() => setLocalSettings(s => ({ ...s, housing: !s.housing }))}
+          <button onClick={() => setLocalDefault(s => ({ ...s, housing: !s.housing }))}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-              localSettings.housing ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
+              localDefault.housing ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
             }`}>
-            住房 {localSettings.housing ? '\u2713' : '\u2717'}
+            住房 {localDefault.housing ? '\u2713' : '\u2717'}
           </button>
         </div>
-
         <div className="flex justify-end mt-3">
-          <button onClick={handleSave}
+          <button onClick={handleSaveDefault}
             className="px-3 py-1.5 text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 rounded transition-colors">
-            保存设置
+            保存默认
           </button>
         </div>
       </div>
 
-      {/* 月度成本分析 */}
+      {/* 月度成本 */}
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
-        <div className="text-xs text-stone-400 font-semibold mb-2">📊 月度成本分析</div>
+        <div className="text-xs text-stone-400 font-semibold mb-2">📊 月度成本</div>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between">
             <span className="text-stone-500">工人工资</span>
-            <span className="text-amber-400">{cost.totalBase} 银两</span>
+            <span className="text-amber-400">{cost.totalBase.toFixed(2)} 银两</span>
           </div>
           <div className="flex justify-between">
             <span className="text-stone-500">五险一金</span>
-            <span className="text-blue-400">{cost.totalBenefit} 银两</span>
+            <span className="text-blue-400">{cost.totalBenefit.toFixed(2)} 银两</span>
           </div>
           <div className="flex justify-between">
             <span className="text-stone-500">福利支出</span>
-            <span className="text-green-400">{cost.totalWelfare} 银两</span>
+            <span className="text-green-400">{cost.totalWelfare.toFixed(2)} 银两</span>
           </div>
           <div className="flex justify-between font-bold">
             <span className="text-stone-400">总人力成本</span>
-            <span className="text-red-400">{cost.total} 银两/月</span>
+            <span className="text-red-400">{cost.total.toFixed(2)} 银两/月</span>
           </div>
         </div>
         <div className="mt-2 pt-2 border-t border-stone-700/30 text-[10px] text-stone-600">
-          五险一金比例: {Math.round(benefitRate * 100)}% (养老8% + 医疗2% + 失业0.5% + 工伤0.5% + 生育0.8% + 公积金12%)
+          五险一金: {Math.round(benefitRate * 100)}%
         </div>
       </div>
 
       {/* 工人列表 */}
       <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
-        <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人列表</div>
-        <div className="space-y-1.5">
+        <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人列表（可单独调节）</div>
+        <div className="flex items-center text-[10px] text-stone-600 pb-1 border-b border-stone-800/50 mb-1">
+          <span className="w-16">姓名</span>
+          <span className="w-16 text-center">月薪</span>
+          <span className="w-14 text-center">工时</span>
+          <span className="flex-1 text-right">心情</span>
+        </div>
+        <div className="space-y-1">
           {farmers.map(farmer => {
             const state = workerSys?.workerState?.[farmer.id];
-            const totalHours = (state?.workHours || 8) + (state?.overtimeHours || 0);
             const morale = state?.morale || 70;
+            const salary = getWorkerSalary(farmer);
+            const hours = getWorkerHours(farmer);
+            const hasOverride = editingSalary[farmer.id] != null || editingHours[farmer.id] != null;
             return (
-              <div key={farmer.id} className="flex items-center justify-between text-xs py-1 border-b border-stone-800/50 last:border-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-stone-300 w-16 truncate">{farmer.name}</span>
-                  <span className="text-stone-600">{totalHours}h/天</span>
+              <div key={farmer.id} className={`flex items-center text-xs py-1 border-b border-stone-800/30 last:border-0 ${hasOverride ? 'bg-amber-900/10' : ''}`}>
+                <span className="text-stone-300 w-16 truncate">{farmer.name}</span>
+                <div className="w-16 flex items-center justify-center">
+                  <input type="number" step="0.1" min="0" value={salary}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!isNaN(v) && v >= 0) setEditingSalary(prev => ({ ...prev, [farmer.id]: v }));
+                    }}
+                    className="w-12 bg-stone-700 text-amber-400 text-[10px] px-1 py-0.5 rounded text-center outline-none focus:ring-1 focus:ring-amber-500"
+                  />
                 </div>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className={morale >= 70 ? 'text-green-400' : morale >= 40 ? 'text-yellow-400' : 'text-red-400'}>
-                    心情 {Math.round(morale)}
+                <div className="w-14 flex items-center justify-center">
+                  <input type="number" step="1" min="1" max="16" value={hours}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v) && v >= 1 && v <= 16) setEditingHours(prev => ({ ...prev, [farmer.id]: v }));
+                    }}
+                    className="w-10 bg-stone-700 text-blue-400 text-[10px] px-1 py-0.5 rounded text-center outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex-1 flex items-center justify-end gap-1">
+                  <span className={`text-[10px] ${morale >= 70 ? 'text-green-400' : morale >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {Math.round(morale)}
                   </span>
+                  {hasOverride && (
+                    <button onClick={() => {
+                      setEditingSalary(prev => { const n = { ...prev }; delete n[farmer.id]; return n; });
+                      setEditingHours(prev => { const n = { ...prev }; delete n[farmer.id]; return n; });
+                    }} className="text-[9px] text-stone-600 hover:text-stone-400" title="恢复默认">重置</button>
+                  )}
                 </div>
               </div>
             );
           })}
-          {farmers.length === 0 && (
-            <div className="text-center text-stone-600 text-xs py-3">暂无工人</div>
-          )}
+          {farmers.length === 0 && <div className="text-center text-stone-600 text-xs py-3">暂无工人</div>}
         </div>
       </div>
     </div>

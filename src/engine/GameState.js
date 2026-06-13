@@ -372,7 +372,7 @@ export class GameState {
     this.repairSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
 
     // 销售
-    this.salesSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+    this.salesSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.financeSystem);
 
     // 运输
     this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
@@ -683,7 +683,7 @@ export class GameState {
       case 'haggle_customer': {
         result = this.salesSystem.haggle(params.customerIndex, params.offerPrice);
         if (result.sold) {
-          this.warehouse.addItem('currency', 'silver', '银两', result.price);
+          this.financeSystem.treasury += result.price;
         }
         break;
       }

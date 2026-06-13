@@ -11,11 +11,17 @@
 
 export class SalesSystem {
   constructor() {
-    this.reputation = 50;       // 声望 0-100
-    this.dailyCustomers = [];   // 今日顾客列表
-    this.salesHistory = [];     // 销售记录
-    this.shopStock = {};        // 店铺货架 { itemId: { amount, price } }
-    this.pricing = {};          // 定价 { itemId: price }
+    this.reputation = 50;
+    this.dailyCustomers = [];
+    this.salesHistory = [];
+    this.shopStock = {};
+    this.pricing = {
+      wheat: 2, corn: 3, turnip: 1.5,
+      spirit_grass: 5, blood_lotus: 8, frost_flower: 7, sky_root: 15,
+      iron_ore: 3, copper_ore: 2, coal: 1,
+      iron_ingot: 8, copper_ingot: 5, spirit_stone: 25,
+      pill_heal: 10, pill_buff: 15, pill_fortune: 30,
+    };
     this.dailyStats = {};
   }
 
@@ -51,16 +57,14 @@ export class SalesSystem {
 
   // ====== Tick ======
 
-  tick(isNewDay, allCharacters, warehouse, logFn) {
+  tick(isNewDay, allCharacters, warehouse, logFn, financeSystem) {
     if (!isNewDay) return;
 
-    // 生成今日顾客
     this._generateCustomers();
 
-    // 贩子自动销售
     const traders = allCharacters.filter(c => !c.isRetired && c.hasPost('trader'));
     for (const trader of traders) {
-      this._autoSell(trader, warehouse, logFn);
+      this._autoSell(trader, warehouse, logFn, financeSystem);
     }
 
     // 声望每日衰减
@@ -113,7 +117,7 @@ export class SalesSystem {
     };
   }
 
-  _autoSell(trader, warehouse, logFn) {
+  _autoSell(trader, warehouse, logFn, financeSystem) {
     for (const customer of this.dailyCustomers) {
       if (!customer.wantItem) continue;
 
@@ -122,16 +126,15 @@ export class SalesSystem {
 
       const price = this.pricing[customer.wantItem] || stock.price;
 
-      // 顾客决定是否购买
       if (price <= customer.budget) {
-        // 成功销售
         stock.amount -= 1;
-        customer.wantItem = null; // 已购买
+        customer.wantItem = null;
 
-        // 加钱到仓库
-        warehouse.addItem('currency', 'silver', '银两', price);
+        // 银两进国库
+        if (financeSystem) {
+          financeSystem.treasury += price;
+        }
 
-        // 声望提升
         this.reputation = Math.min(100, this.reputation + 1);
 
         this.salesHistory.push({
@@ -140,7 +143,7 @@ export class SalesSystem {
           day: Date.now(),
         });
 
-        logFn(`💰${trader.name}卖出了${customer.wantItemName}，获得${price}银两`);
+        logFn(`${trader.name}卖出了${customer.wantItemName}，获得${price.toFixed(2)}银两`);
       }
     }
   }
