@@ -606,6 +606,16 @@ export class GameState {
         result = this.farm.upgradeToSpirit(params.plotId, targetLevel);
         break;
       }
+      case 'set_wage_settings': {
+        const { postId, settings } = params;
+        if (!postId || !settings) {
+          result = { success: false, message: '参数错误' };
+          break;
+        }
+        this.financeSystem.setWageSettings(postId, settings);
+        result = { success: true, message: `${postId}岗位工资设置已更新` };
+        break;
+      }
       default:
         result = { success: false, message: '未知操作' };
     }

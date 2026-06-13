@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Minus, Trash2, Users } from 'lucide-react';
+import { Plus, Minus, Trash2, Users, Clock, Coins, Heart, BedDouble, ChevronDown, ChevronUp } from 'lucide-react';
 import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
 import { FARM_EXPAND_TICKS, RECRUIT_POOL_SIZE } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
+import { OVERTIME_RATES, BENEFIT_RATES } from '../engine/FinanceSystem';
 
 // 获取plot的分配角色名列表
 function getAssignedNames(plot, farmers) {
@@ -57,7 +58,6 @@ function ExpandBlock({ q, allChars }) {
   );
 }
 
-// 计算农田预计每日产量
 function calcDailyYieldEstimate(plots) {
   let totalDaily = 0;
   for (const plot of plots) {
@@ -118,7 +118,6 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
-      {/* 统计条 */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs">
         <span className="text-stone-400">农田 <span className="text-stone-200 font-bold">{totalPlots}</span></span>
         <span className="text-stone-400">种植中 <span className="text-green-400 font-bold">{growingPlots}</span></span>
@@ -132,7 +131,6 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
         {expandQueue.length > 0 && <span className="text-blue-400">⛏ 开垦中 {expandQueue.length}</span>}
       </div>
 
-      {/* 农田网格 */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-stone-300">农田概览</h3>
         <div className="flex flex-col items-end gap-0.5">
@@ -169,7 +167,6 @@ function OverviewTab({ game, selectedPlot, setSelectedPlot, onAction }) {
         ))}
       </div>
 
-      {/* 选中详情 */}
       {selectedPlotData && (
         <div className="mt-4 p-3 bg-stone-900/50 rounded-lg border border-stone-700/50">
           <div className="flex items-center justify-between mb-2">
@@ -265,6 +262,9 @@ function PersonnelTab({ game, onAction }) {
           const speed = farmer.getDisplaySpeed();
           const genderIcon = farmer.gender === 'female' ? '♀' : '♂';
           const farmingRevealed = farmer.isAttributeRevealed('farming');
+          const workerState = game.workerSystem?.workerState?.[farmer.id];
+          const fatigue = workerState?.fatigue || 0;
+          const health = workerState?.health || 100;
 
           return (
             <div key={farmer.id} className={`p-2 rounded-lg border ${
@@ -272,7 +272,6 @@ function PersonnelTab({ game, onAction }) {
               : isRecruiting ? 'border-amber-700/50 bg-amber-900/10'
               : 'border-stone-700/30 bg-stone-900/30'
             }`}>
-              {/* 第一行：名字 + 心情 + 遣散 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-stone-200">{farmer.name}</span>
@@ -292,7 +291,6 @@ function PersonnelTab({ game, onAction }) {
                 </div>
               </div>
 
-              {/* 第二行：特质标签 */}
               {farmer.traits && farmer.traits.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 mt-1">
                   {farmer.traits.map(t => (
@@ -303,7 +301,6 @@ function PersonnelTab({ game, onAction }) {
                 </div>
               )}
 
-              {/* 第三行：数据 + 状态 */}
               <div className="flex items-center gap-3 mt-1 text-[10px] text-stone-500">
                 {farmingRevealed ? (
                   <span>🌾 {Math.floor(farmer.knowledgeAttributes.farming)}</span>
@@ -324,7 +321,32 @@ function PersonnelTab({ game, onAction }) {
                 )}
               </div>
 
-              {/* 外貌描述 */}
+              {/* 疲劳/健康条 */}
+              {workerState && (
+                <div className="flex gap-2 mt-1.5">
+                  <div className="flex items-center gap-1 flex-1">
+                    <BedDouble size={9} className={fatigue > 60 ? 'text-orange-400' : 'text-stone-500'} />
+                    <div className="flex-1 h-1 bg-stone-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: `${Math.min(100, fatigue)}%`,
+                        backgroundColor: fatigue > 80 ? '#ef4444' : fatigue > 50 ? '#f59e0b' : '#22c55e',
+                      }} />
+                    </div>
+                    <span className="text-[8px] text-stone-500 w-6">{Math.round(fatigue)}</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-1">
+                    <Heart size={9} className={health < 50 ? 'text-red-400' : 'text-stone-500'} />
+                    <div className="flex-1 h-1 bg-stone-700 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{
+                        width: `${Math.min(100, health)}%`,
+                        backgroundColor: health < 30 ? '#ef4444' : health < 60 ? '#f59e0b' : '#22c55e',
+                      }} />
+                    </div>
+                    <span className="text-[8px] text-stone-500 w-6">{Math.round(health)}</span>
+                  </div>
+                </div>
+              )}
+
               {farmer.appearance && (
                 <div className="text-[9px] text-stone-600 mt-0.5 italic">{farmer.appearance}</div>
               )}
@@ -341,17 +363,232 @@ function PersonnelTab({ game, onAction }) {
   );
 }
 
+// ========== 子面板：工人权益管理 ==========
+function WorkerWelfareTab({ game, onAction }) {
+  const farmers = game.characters.filter(c => c.hasRole('farmer') && !c.isRetired);
+  const finance = game.financeSystem;
+  const workerSys = game.workerSystem;
+
+  // 当前工资设置
+  const wageSettings = finance.wageSettings['farmer'] || {
+    baseSalary: 100,
+    overtimeRate: OVERTIME_RATES.weekday,
+    standardHours: 8,
+    maxOvertime: 4,
+    mealAllowance: false,
+    housing: false,
+    insurance: true,
+  };
+
+  const [localSettings, setLocalSettings] = useState({ ...wageSettings });
+
+  const handleSave = () => {
+    finance.setWageSettings('farmer', localSettings);
+    onAction('set_wage_settings', { postId: 'farmer', settings: localSettings });
+  };
+
+  // 计算每日总成本
+  const cost = finance.calculateDailyCost(farmers);
+  const benefitRate = Object.values(BENEFIT_RATES).reduce((s, r) => s + r, 0);
+
+  return (
+    <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Coins size={14} className="text-amber-400" />
+          <h3 className="text-sm font-bold text-stone-300">工人权益管理</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-stone-500">国库</span>
+          <span className="text-sm text-amber-400 font-bold">{finance.treasury} 银两</span>
+        </div>
+      </div>
+
+      {/* 工资设置 */}
+      <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
+        <div className="text-xs text-stone-400 font-semibold mb-3 flex items-center gap-1.5">
+          <Coins size={12} /> 农夫岗位工资设置
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* 底薪 */}
+          <div>
+            <label className="text-[10px] text-stone-500 block mb-1">底薪（银两/月）</label>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: Math.max(0, s.baseSalary - 10) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Minus size={10} />
+              </button>
+              <span className="text-sm text-amber-400 font-bold w-12 text-center">{localSettings.baseSalary}</span>
+              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: s.baseSalary + 10 }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Plus size={10} />
+              </button>
+            </div>
+            <div className="text-[9px] text-stone-600 mt-0.5">
+              日薪: {Math.round(localSettings.baseSalary / 30)} 银两
+            </div>
+          </div>
+
+          {/* 标准工时 */}
+          <div>
+            <label className="text-[10px] text-stone-500 block mb-1">标准工时（小时/天）</label>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLocalSettings(s => ({ ...s, standardHours: Math.max(4, s.standardHours - 1) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Minus size={10} />
+              </button>
+              <span className="text-sm text-blue-400 font-bold w-12 text-center">{localSettings.standardHours}</span>
+              <button onClick={() => setLocalSettings(s => ({ ...s, standardHours: Math.min(12, s.standardHours + 1) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Plus size={10} />
+              </button>
+            </div>
+          </div>
+
+          {/* 加班费率 */}
+          <div>
+            <label className="text-[10px] text-stone-500 block mb-1">加班费率（倍）</label>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLocalSettings(s => ({ ...s, overtimeRate: Math.max(1.0, +(s.overtimeRate - 0.5).toFixed(1)) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Minus size={10} />
+              </button>
+              <span className="text-sm text-orange-400 font-bold w-12 text-center">{localSettings.overtimeRate}x</span>
+              <button onClick={() => setLocalSettings(s => ({ ...s, overtimeRate: Math.min(3.0, +(s.overtimeRate + 0.5).toFixed(1)) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Plus size={10} />
+              </button>
+            </div>
+          </div>
+
+          {/* 加班上限 */}
+          <div>
+            <label className="text-[10px] text-stone-500 block mb-1">加班上限（小时/天）</label>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setLocalSettings(s => ({ ...s, maxOvertime: Math.max(0, s.maxOvertime - 1) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Minus size={10} />
+              </button>
+              <span className="text-sm text-red-400 font-bold w-12 text-center">{localSettings.maxOvertime}h</span>
+              <button onClick={() => setLocalSettings(s => ({ ...s, maxOvertime: Math.min(8, s.maxOvertime + 1) }))}
+                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
+                <Plus size={10} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 福利开关 */}
+        <div className="flex gap-3 mt-3">
+          <button
+            onClick={() => setLocalSettings(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
+            className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+              localSettings.mealAllowance ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
+            }`}>
+            🍚 餐补 {localSettings.mealAllowance ? '✓' : '✗'}
+          </button>
+          <button
+            onClick={() => setLocalSettings(s => ({ ...s, housing: !s.housing }))}
+            className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+              localSettings.housing ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
+            }`}>
+            🏠 住房 {localSettings.housing ? '✓' : '✗'}
+          </button>
+          <button
+            onClick={() => setLocalSettings(s => ({ ...s, insurance: !s.insurance }))}
+            className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+              localSettings.insurance ? 'bg-blue-800/60 text-blue-300' : 'bg-stone-700/40 text-stone-500'
+            }`}>
+            🛡️ 五险一金 {localSettings.insurance ? '✓' : '✗'}
+          </button>
+        </div>
+
+        <div className="flex justify-end mt-3">
+          <button onClick={handleSave}
+            className="px-3 py-1.5 text-xs bg-amber-700 hover:bg-amber-600 text-amber-100 rounded transition-colors">
+            保存设置
+          </button>
+        </div>
+      </div>
+
+      {/* 每日成本分析 */}
+      <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
+        <div className="text-xs text-stone-400 font-semibold mb-2">📊 每日成本分析</div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-stone-500">工人工资</span>
+            <span className="text-amber-400">{cost.totalWages} 银两</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-stone-500">五险一金</span>
+            <span className="text-blue-400">{cost.totalBenefits} 银两</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-stone-500">福利支出</span>
+            <span className="text-green-400">{cost.totalOther} 银两</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span className="text-stone-400">总人力成本</span>
+            <span className="text-red-400">{cost.total} 银两/天</span>
+          </div>
+        </div>
+        <div className="mt-2 pt-2 border-t border-stone-700/30 text-[10px] text-stone-600">
+          五险一金比例: {Math.round(benefitRate * 100)}% (养老8% + 医疗2% + 失业0.5% + 工伤0.5% + 生育0.8% + 公积金12%)
+        </div>
+      </div>
+
+      {/* 各工人工资明细 */}
+      <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
+        <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人薪资明细</div>
+        <div className="space-y-2">
+          {farmers.map(farmer => {
+            const wage = finance.calculateDailyWage(farmer, 'farmer');
+            const state = workerSys?.workerState?.[farmer.id];
+            const totalHours = (state?.workHours || 8) + (state?.overtimeHours || 0);
+
+            return (
+              <div key={farmer.id} className="flex items-center justify-between text-xs py-1 border-b border-stone-800/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-stone-300 w-16 truncate">{farmer.name}</span>
+                  <span className="text-stone-600">{totalHours}h/天</span>
+                </div>
+                <div className="flex items-center gap-3 text-[10px]">
+                  <span className="text-stone-500">底薪 <span className="text-amber-400">{wage.base}</span></span>
+                  <span className="text-stone-500">加班 <span className="text-orange-400">{wage.overtime}</span></span>
+                  <span className="text-stone-500">保险 <span className="text-blue-400">{wage.benefit}</span></span>
+                  <span className="text-stone-400 font-bold">合计 <span className="text-amber-300">{wage.total}</span></span>
+                </div>
+              </div>
+            );
+          })}
+          {farmers.length === 0 && (
+            <div className="text-center text-stone-600 text-xs py-3">暂无工人</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== 主面板 ==========
 export default function FarmLeaderPanel({ game, onAction }) {
   const [selectedPlot, setSelectedPlot] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
   const plots = game.farm.plots;
 
-  // 切换到队长视角时，自动将目标农田数同步为当前实际农田数
   useEffect(() => {
     if (game.farm.targetPlotCount < plots.length) {
       game.farm.targetPlotCount = plots.length;
       if (onAction) onAction('set_target_plots', { count: plots.length });
     }
   }, []);
+
+  const tabs = [
+    { id: 'overview', label: '农田概览', icon: '🌾' },
+    { id: 'personnel', label: '人员管理', icon: '👥' },
+    { id: 'welfare', label: '工人权益', icon: '💰' },
+  ];
 
   return (
     <div>
@@ -361,15 +598,38 @@ export default function FarmLeaderPanel({ game, onAction }) {
         <span className="text-xs text-stone-500">（农民队长视角）</span>
       </div>
 
-      <OverviewTab
-        game={game}
-        selectedPlot={selectedPlot}
-        setSelectedPlot={setSelectedPlot}
-        onAction={onAction}
-      />
-      <div className="mt-4">
-        <PersonnelTab game={game} onAction={onAction} />
+      {/* Tab 切换 */}
+      <div className="flex gap-1 mb-4 bg-stone-900/50 rounded-lg p-1">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs rounded-md transition-colors ${
+              activeTab === tab.id
+                ? 'bg-amber-800/60 text-amber-200'
+                : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
       </div>
+
+      {activeTab === 'overview' && (
+        <OverviewTab
+          game={game}
+          selectedPlot={selectedPlot}
+          setSelectedPlot={setSelectedPlot}
+          onAction={onAction}
+        />
+      )}
+      {activeTab === 'personnel' && (
+        <PersonnelTab game={game} onAction={onAction} />
+      )}
+      {activeTab === 'welfare' && (
+        <WorkerWelfareTab game={game} onAction={onAction} />
+      )}
     </div>
   );
 }
