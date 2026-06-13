@@ -373,6 +373,7 @@ function WorkerWelfareTab({ game, onAction }) {
   const [localDefault, setLocalDefault] = useState({ ...defaultSettings });
   const [editingSalary, setEditingSalary] = useState({});
   const [editingHours, setEditingHours] = useState({});
+  const [housingMsg, setHousingMsg] = useState('');
 
   const handleSaveDefault = () => {
     finance.setWageSettings('farmer', localDefault);
@@ -469,8 +470,13 @@ function WorkerWelfareTab({ game, onAction }) {
             包吃 {localDefault.freeFood ? '\u2713' : '\u2717'}
           </button>
           <button onClick={() => {
-            if (!localDefault.freeHousing && (game.dormitoryCapacity || 0) <= 0) return;
+            if (!localDefault.freeHousing && (game.dormitoryCapacity || 0) <= 0) {
+              setHousingMsg('宿舍不足！需要先建造宿舍');
+              setTimeout(() => setHousingMsg(''), 3000);
+              return;
+            }
             setLocalDefault(s => ({ ...s, freeHousing: !s.freeHousing }));
+            setHousingMsg('');
           }}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
               localDefault.freeHousing ? 'bg-green-800/60 text-green-300'
@@ -485,6 +491,9 @@ function WorkerWelfareTab({ game, onAction }) {
           <div className="text-[10px] text-stone-600 mt-1">
             宿舍床位: {game.dormitoryCapacity} 间
           </div>
+        )}
+        {housingMsg && (
+          <div className="text-[10px] text-red-400 mt-1">{housingMsg}</div>
         )}
         <div className="flex justify-end mt-3">
           <button onClick={handleSaveDefault}
