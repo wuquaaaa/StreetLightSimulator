@@ -448,9 +448,15 @@ function WorkerWelfareTab({ game, onAction }) {
         <div className="text-xs text-stone-400 font-semibold mb-2">📊 月度成本</div>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between">
-            <span className="text-stone-500">工人工资</span>
+            <span className="text-stone-500">基本工资</span>
             <span className="text-amber-400">{cost.totalBase.toFixed(2)} 银两</span>
           </div>
+          {cost.totalOvertime > 0 && (
+            <div className="flex justify-between">
+              <span className="text-stone-500">加班费</span>
+              <span className="text-orange-400">{cost.totalOvertime.toFixed(2)} 银两</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-stone-500">五险一金</span>
             <span className="text-blue-400">{cost.totalBenefit.toFixed(2)} 银两</span>

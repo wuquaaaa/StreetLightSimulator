@@ -81,33 +81,48 @@ export class FinanceSystem {
     return { success: true };
   }
 
-  /** 计算单个NPC的月薪（含五险一金） */
+  /** 计算单个NPC的月薪（含加班费+五险一金） */
   calculateMonthlyWage(character, postId) {
     const settings = this.wageSettings[postId] || this.wageSettings['farmer'];
     const baseSalary = settings.baseSalary;
+    const standardHours = settings.standardHours || 8;
+    const overtimeRate = settings.overtimeRate || 1.5;
+
+    // 加班费：超过标准工时的部分按加班费率计算
+    const workerState = character._workerState;
+    const overtimeHours = workerState?.overtimeHours || 0;
+    const hourlyRate = baseSalary / (standardHours * 30); // 时薪
+    const overtimePay = overtimeHours * 30 * hourlyRate * overtimeRate; // 月加班费
+
+    // 五险一金（按 baseSalary 计算）
     const benefitRate = this._getBenefitRate(postId);
     const benefitCost = baseSalary * benefitRate;
+
+    // 福利
     const welfareCost = (settings.mealAllowance ? 0.5 : 0) + (settings.housing ? 0.3 : 0);
+
     return {
       base: baseSalary,
+      overtime: Math.round(overtimePay * 10) / 10,
       benefit: Math.round(benefitCost * 10) / 10,
       welfare: Math.round(welfareCost * 10) / 10,
-      total: Math.round((baseSalary + benefitCost + welfareCost) * 10) / 10,
+      total: Math.round((baseSalary + overtimePay + benefitCost + welfareCost) * 10) / 10,
     };
   }
 
   /** 计算所有工人的月薪总成本 */
   calculateMonthlyCost(allCharacters) {
-    let totalBase = 0, totalBenefit = 0, totalWelfare = 0;
+    let totalBase = 0, totalOvertime = 0, totalBenefit = 0, totalWelfare = 0;
     for (const char of allCharacters) {
       if (char.isRetired || char.isPlayer) continue;
       const postId = char.posts?.[0] || 'farmer';
       const wage = this.calculateMonthlyWage(char, postId);
       totalBase += wage.base;
+      totalOvertime += wage.overtime;
       totalBenefit += wage.benefit;
       totalWelfare += wage.welfare;
     }
-    return { totalBase, totalBenefit, totalWelfare, total: totalBase + totalBenefit + totalWelfare };
+    return { totalBase, totalOvertime, totalBenefit, totalWelfare, total: totalBase + totalOvertime + totalBenefit + totalWelfare };
   }
 
   // ====== 每月发薪 + 薪资锚定 ======

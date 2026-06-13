@@ -71,6 +71,7 @@ export class WorkerSystem {
 
       this.initWorker(char.id);
       const state = this.workerState[char.id];
+      char._workerState = state; // 暴露给 FinanceSystem 读取
 
       // 疲劳累积
       const totalHours = state.workHours + state.overtimeHours;
