@@ -5,7 +5,6 @@ import { FARM_EXPAND_TICKS, RECRUIT_POOL_SIZE } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
 import { BENEFIT_RATES } from '../engine/FinanceSystem';
-import { OVERTIME_RATES } from '../engine/constants';
 
 // 获取plot的分配角色名列表
 function getAssignedNames(plot, farmers) {
@@ -370,17 +369,7 @@ function WorkerWelfareTab({ game, onAction }) {
   const finance = game.financeSystem;
   const workerSys = game.workerSystem;
 
-  // 当前工资设置
-  const wageSettings = finance.wageSettings['farmer'] || {
-    baseSalary: 100,
-    overtimeRate: OVERTIME_RATES.weekday,
-    standardHours: 8,
-    maxOvertime: 4,
-    mealAllowance: false,
-    housing: false,
-    insurance: true,
-  };
-
+  const wageSettings = finance.wageSettings['farmer'] || { baseSalary: 1 };
   const [localSettings, setLocalSettings] = useState({ ...wageSettings });
 
   const handleSave = () => {
@@ -388,8 +377,7 @@ function WorkerWelfareTab({ game, onAction }) {
     onAction('set_wage_settings', { postId: 'farmer', settings: localSettings });
   };
 
-  // 计算每日总成本
-  const cost = finance.calculateDailyCost(farmers);
+  const cost = finance.calculateMonthlyCost(farmers);
   const benefitRate = Object.values(BENEFIT_RATES).reduce((s, r) => s + r, 0);
 
   return (
@@ -408,30 +396,23 @@ function WorkerWelfareTab({ game, onAction }) {
       {/* 工资设置 */}
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
         <div className="text-xs text-stone-400 font-semibold mb-3 flex items-center gap-1.5">
-          <Coins size={12} /> 农夫岗位工资设置
+          <Coins size={12} /> 农夫岗位月薪设置
         </div>
-
         <div className="grid grid-cols-2 gap-3">
-          {/* 底薪 */}
           <div>
-            <label className="text-[10px] text-stone-500 block mb-1">底薪（银两/月）</label>
+            <label className="text-[10px] text-stone-500 block mb-1">月薪（银两/月）</label>
             <div className="flex items-center gap-1">
-              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: Math.max(0, s.baseSalary - 10) }))}
+              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: Math.max(0.5, +(s.baseSalary - 0.5).toFixed(1)) }))}
                 className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
                 <Minus size={10} />
               </button>
               <span className="text-sm text-amber-400 font-bold w-12 text-center">{localSettings.baseSalary}</span>
-              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: s.baseSalary + 10 }))}
+              <button onClick={() => setLocalSettings(s => ({ ...s, baseSalary: +(s.baseSalary + 0.5).toFixed(1) }))}
                 className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
                 <Plus size={10} />
               </button>
             </div>
-            <div className="text-[9px] text-stone-600 mt-0.5">
-              日薪: {Math.round(localSettings.baseSalary / 30)} 银两
-            </div>
           </div>
-
-          {/* 标准工时 */}
           <div>
             <label className="text-[10px] text-stone-500 block mb-1">标准工时（小时/天）</label>
             <div className="flex items-center gap-1">
@@ -446,62 +427,20 @@ function WorkerWelfareTab({ game, onAction }) {
               </button>
             </div>
           </div>
-
-          {/* 加班费率 */}
-          <div>
-            <label className="text-[10px] text-stone-500 block mb-1">加班费率（倍）</label>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setLocalSettings(s => ({ ...s, overtimeRate: Math.max(1.0, +(s.overtimeRate - 0.5).toFixed(1)) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Minus size={10} />
-              </button>
-              <span className="text-sm text-orange-400 font-bold w-12 text-center">{localSettings.overtimeRate}x</span>
-              <button onClick={() => setLocalSettings(s => ({ ...s, overtimeRate: Math.min(3.0, +(s.overtimeRate + 0.5).toFixed(1)) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Plus size={10} />
-              </button>
-            </div>
-          </div>
-
-          {/* 加班上限 */}
-          <div>
-            <label className="text-[10px] text-stone-500 block mb-1">加班上限（小时/天）</label>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setLocalSettings(s => ({ ...s, maxOvertime: Math.max(0, s.maxOvertime - 1) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Minus size={10} />
-              </button>
-              <span className="text-sm text-red-400 font-bold w-12 text-center">{localSettings.maxOvertime}h</span>
-              <button onClick={() => setLocalSettings(s => ({ ...s, maxOvertime: Math.min(8, s.maxOvertime + 1) }))}
-                className="w-6 h-6 rounded bg-stone-700 hover:bg-stone-600 text-stone-400 flex items-center justify-center text-xs">
-                <Plus size={10} />
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* 福利开关 */}
         <div className="flex gap-3 mt-3">
-          <button
-            onClick={() => setLocalSettings(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
+          <button onClick={() => setLocalSettings(s => ({ ...s, mealAllowance: !s.mealAllowance }))}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
               localSettings.mealAllowance ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
             }`}>
-            🍚 餐补 {localSettings.mealAllowance ? '✓' : '✗'}
+            餐补 {localSettings.mealAllowance ? '\u2713' : '\u2717'}
           </button>
-          <button
-            onClick={() => setLocalSettings(s => ({ ...s, housing: !s.housing }))}
+          <button onClick={() => setLocalSettings(s => ({ ...s, housing: !s.housing }))}
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
               localSettings.housing ? 'bg-green-800/60 text-green-300' : 'bg-stone-700/40 text-stone-500'
             }`}>
-            🏠 住房 {localSettings.housing ? '✓' : '✗'}
-          </button>
-          <button
-            onClick={() => setLocalSettings(s => ({ ...s, insurance: !s.insurance }))}
-            className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
-              localSettings.insurance ? 'bg-blue-800/60 text-blue-300' : 'bg-stone-700/40 text-stone-500'
-            }`}>
-            🛡️ 五险一金 {localSettings.insurance ? '✓' : '✗'}
+            住房 {localSettings.housing ? '\u2713' : '\u2717'}
           </button>
         </div>
 
@@ -513,25 +452,25 @@ function WorkerWelfareTab({ game, onAction }) {
         </div>
       </div>
 
-      {/* 每日成本分析 */}
+      {/* 月度成本分析 */}
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
-        <div className="text-xs text-stone-400 font-semibold mb-2">📊 每日成本分析</div>
+        <div className="text-xs text-stone-400 font-semibold mb-2">📊 月度成本分析</div>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between">
             <span className="text-stone-500">工人工资</span>
-            <span className="text-amber-400">{cost.totalWages} 银两</span>
+            <span className="text-amber-400">{cost.totalBase} 银两</span>
           </div>
           <div className="flex justify-between">
             <span className="text-stone-500">五险一金</span>
-            <span className="text-blue-400">{cost.totalBenefits} 银两</span>
+            <span className="text-blue-400">{cost.totalBenefit} 银两</span>
           </div>
           <div className="flex justify-between">
             <span className="text-stone-500">福利支出</span>
-            <span className="text-green-400">{cost.totalOther} 银两</span>
+            <span className="text-green-400">{cost.totalWelfare} 银两</span>
           </div>
           <div className="flex justify-between font-bold">
             <span className="text-stone-400">总人力成本</span>
-            <span className="text-red-400">{cost.total} 银两/天</span>
+            <span className="text-red-400">{cost.total} 银两/月</span>
           </div>
         </div>
         <div className="mt-2 pt-2 border-t border-stone-700/30 text-[10px] text-stone-600">
@@ -539,7 +478,7 @@ function WorkerWelfareTab({ game, onAction }) {
         </div>
       </div>
 
-      {/* 工人列表（简要） */}
+      {/* 工人列表 */}
       <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
         <div className="text-xs text-stone-400 font-semibold mb-2">👥 工人列表</div>
         <div className="space-y-1.5">
@@ -547,7 +486,6 @@ function WorkerWelfareTab({ game, onAction }) {
             const state = workerSys?.workerState?.[farmer.id];
             const totalHours = (state?.workHours || 8) + (state?.overtimeHours || 0);
             const morale = state?.morale || 70;
-
             return (
               <div key={farmer.id} className="flex items-center justify-between text-xs py-1 border-b border-stone-800/50 last:border-0">
                 <div className="flex items-center gap-2">
