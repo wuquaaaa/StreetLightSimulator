@@ -180,7 +180,7 @@ export default function GameApp() {
     g.tutorialStep = next >= TUTORIAL_TOTAL_STEPS ? -1 : next;
     // 步骤1 → 自动切换到农田tab（种田教学）
     if (g.tutorialStep === 1) {
-      setActiveTab('farm');
+      setActiveTab('job');
     }
     // 步骤6 → 自动切换到附近村庄tab（招募教学）
     if (g.tutorialStep === 6) {
