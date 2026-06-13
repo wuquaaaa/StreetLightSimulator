@@ -11,6 +11,8 @@
  *   qualityWeights: { poor, low, medium, high, supreme }  — 品质权重基础值
  */
 
+import { IMMORTAL_HERBS } from './immortalHerbs';
+
 export const CROPS = [
   // ============================================================
   // 食物类
@@ -66,8 +68,8 @@ export const CROPS = [
   },
 
   // ============================================================
-  // 灵草类（isHerb: true）
-  // ============================================================
+// 灵草类（isHerb: true）
+// ============================================================
   {
     id: 'spirit_grass',
     name: '灵草',
@@ -146,6 +148,35 @@ export const CROPS = [
   },
 ];
 
+// ============================================================
+// 仙草类（从 immortalHerbs.js 导入，格式统一为 CROPS 兼容格式）
+// ============================================================
+const IMMORTAL_HERB_CROPS = Object.values(IMMORTAL_HERBS).map(h => ({
+  id: h.id,
+  name: h.name,
+  description: h.description,
+  category: 'herb',
+  harvestItem: h.harvestItem,
+  seedId: h.seedId,
+  seedName: h.seedName,
+  seedCost: h.seedCost,
+  growthTime: h.growthTime,
+  baseYield: h.baseYield,
+  season: h.season,
+  icon: h.icon,
+  isHerb: true,
+  isImmortal: true,          // 标记为仙草
+  spiritCost: h.spiritCost,
+  qualityWeights: h.qualityWeights,
+  rarity: h.rarity,
+  spiritAuraMin: h.spiritAuraMin,
+  fertilityRequirement: h.fertilityRequirement,
+  cultivationReq: h.cultivationReq,
+  seedDropChance: h.seedDropChance,
+}));
+
+export const ALL_CROPS = [...CROPS, ...IMMORTAL_HERB_CROPS];
+
 // 品质等级定义（供 FarmSystem 和 UI 使用）
 export const HERB_QUALITY = {
   poor:    { id: 'poor',    label: '残次', color: 'text-stone-400',  bg: 'bg-stone-700/50',   icon: '⬜' },
@@ -158,3 +189,4 @@ export const HERB_QUALITY = {
 // 按分类分组（供 UI 使用）
 export const FOOD_CROPS = CROPS.filter(c => c.category === 'food');
 export const HERB_CROPS  = CROPS.filter(c => c.isHerb);
+export const IMMORTAL_CROPS = IMMORTAL_HERB_CROPS;
