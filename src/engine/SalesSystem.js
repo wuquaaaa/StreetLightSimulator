@@ -16,11 +16,17 @@ export class SalesSystem {
     this.salesHistory = [];
     this.shopStock = {};
     this.pricing = {
-      wheat: 2, corn: 3, turnip: 1.5,
-      spirit_grass: 5, blood_lotus: 8, frost_flower: 7, sky_root: 15,
-      iron_ore: 3, copper_ore: 2, coal: 1,
-      iron_ingot: 8, copper_ingot: 5, spirit_stone: 25,
-      pill_heal: 10, pill_buff: 15, pill_fortune: 30,
+      // 食物类：1石≈1两（明朝参考）
+      wheat: 1.0, corn: 1.5, turnip: 0.8,
+      // 灵草类：稀缺品，溢价
+      spirit_grass: 3.0, blood_lotus: 5.0, frost_flower: 4.0, sky_root: 10.0,
+      // 仙草类：极稀缺
+      moonvine: 15.0, firelotus: 20.0, voidmoss: 25.0, heavenfruit: 50.0, dragonblood_grass: 40.0,
+      // 矿石/金属
+      iron_ore: 1.5, copper_ore: 1.0, coal: 0.5,
+      iron_ingot: 5.0, copper_ingot: 3.0, spirit_stone: 15.0,
+      // 丹药
+      pill_heal: 8.0, pill_buff: 12.0, pill_fortune: 25.0,
     };
     this.dailyStats = {};
   }

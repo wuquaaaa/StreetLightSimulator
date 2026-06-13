@@ -20,16 +20,16 @@ export const CROPS = [
   {
     id: 'wheat',
     name: '小麦',
-    description: '最基础的粮食作物，适应性强',
+    description: '最基础的粮食作物，适应性强（1季成熟）',
     category: 'food',
     harvestItem: 'wheat',
     seedId: 'wheat_seed',
     seedName: '小麦种子',
     seedCost: 1,
-    growthTime: 3,    // 天（仅描述用，实际由 growthProgress 控制）
-    baseYield: 16,
+    growthTime: 10,   // 实际10天成熟（1/growthPerTick × 100 ÷ 10ticks/天）
+    baseYield: 20,
     season: ['春', '夏', '秋'],
-    icon: '🌾',
+    icon: '\u{1F33E}',
     isHerb: false,
   },
   {
@@ -41,13 +41,12 @@ export const CROPS = [
     seedId: 'corn_seed',
     seedName: '玉米种子',
     seedCost: 1,
-    growthTime: 5,
-    baseYield: 28,
+    growthTime: 16,   // 实际16天（growthTimeMod 1.6）
+    baseYield: 35,
     season: ['夏'],
-    icon: '🌽',
-    // 特性：生长速度较慢（growthPerTick 修正在 FarmSystem 通过 growthTimeMod 实现）
-    growthTimeMod: 1.6,   // 生长需要更多 tick
-    waterCostMod: 1.4,    // 蒸发更快（耗水）
+    icon: '\u{1F33D}',
+    growthTimeMod: 1.6,
+    waterCostMod: 1.4,
     isHerb: false,
   },
   {
@@ -59,7 +58,7 @@ export const CROPS = [
     seedId: 'turnip_seed',
     seedName: '萝卜种子',
     seedCost: 1,
-    growthTime: 2,
+    growthTime: 7,    // 实际7天（growthTimeMod 0.7）
     baseYield: 10,
     season: ['秋', '冬'],
     icon: '🥕',
