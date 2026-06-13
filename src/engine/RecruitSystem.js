@@ -51,7 +51,7 @@ export class RecruitSystem {
 
       // 按背景生成候选人
       const background = rollBackground(hrLevel, hasCultivation);
-      const attrs = generateCandidateAttributes(background);
+      const attrs = generateCandidateAttributes(background, age);
       const salaryDemand = generateSalaryDemand(background);
 
       const originTrait = rollOriginTrait();
