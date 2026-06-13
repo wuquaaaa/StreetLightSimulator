@@ -10,6 +10,13 @@ import { MiningSystem } from './MiningSystem';
 import { AlchemySystem } from './AlchemySystem';
 import { EventSystem } from './EventSystem';
 import { RecruitSystem } from './RecruitSystem';
+import { SmeltingSystem } from './SmeltingSystem';
+import { HerbPrepSystem } from './HerbPrepSystem';
+import { RepairSystem } from './RepairSystem';
+import { SalesSystem } from './SalesSystem';
+import { TransportSystem } from './TransportSystem';
+import { FinanceSystem } from './FinanceSystem';
+import { WorkerSystem } from './WorkerSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -61,6 +68,14 @@ export const SaveSystem = {
       miningSystem: game.miningSystem.toJSON(),
       // 妙手炼丹系统
       alchemySystem: game.alchemySystem.toJSON(),
+      // 新增系统
+      smeltingSystem: game.smeltingSystem.toJSON(),
+      herbPrepSystem: game.herbPrepSystem.toJSON(),
+      repairSystem: game.repairSystem.toJSON(),
+      salesSystem: game.salesSystem.toJSON(),
+      transportSystem: game.transportSystem.toJSON(),
+      financeSystem: game.financeSystem.toJSON(),
+      workerSystem: game.workerSystem.toJSON(),
       // 统计快照
       statsHistory: game.statsHistory || [],
     };
@@ -170,6 +185,29 @@ export const SaveSystem = {
     // 妙手炼丹系统
     if (data.alchemySystem) {
       game.alchemySystem = AlchemySystem.fromJSON(data.alchemySystem);
+    }
+
+    // 新增系统（兼容旧存档：如果没有数据则使用默认值）
+    if (data.smeltingSystem) {
+      game.smeltingSystem = SmeltingSystem.fromJSON(data.smeltingSystem);
+    }
+    if (data.herbPrepSystem) {
+      game.herbPrepSystem = HerbPrepSystem.fromJSON(data.herbPrepSystem);
+    }
+    if (data.repairSystem) {
+      game.repairSystem = RepairSystem.fromJSON(data.repairSystem);
+    }
+    if (data.salesSystem) {
+      game.salesSystem = SalesSystem.fromJSON(data.salesSystem);
+    }
+    if (data.transportSystem) {
+      game.transportSystem = TransportSystem.fromJSON(data.transportSystem);
+    }
+    if (data.financeSystem) {
+      game.financeSystem = FinanceSystem.fromJSON(data.financeSystem);
+    }
+    if (data.workerSystem) {
+      game.workerSystem = WorkerSystem.fromJSON(data.workerSystem);
     }
 
     // 统计快照

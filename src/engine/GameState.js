@@ -15,6 +15,13 @@ import { GatherSystem } from './GatherSystem';
 import { MiningSystem } from './MiningSystem';
 import { AlchemySystem } from './AlchemySystem';
 import { RecruitSystem } from './RecruitSystem';
+import { SmeltingSystem } from './SmeltingSystem';
+import { HerbPrepSystem } from './HerbPrepSystem';
+import { RepairSystem } from './RepairSystem';
+import { SalesSystem } from './SalesSystem';
+import { TransportSystem } from './TransportSystem';
+import { FinanceSystem } from './FinanceSystem';
+import { WorkerSystem } from './WorkerSystem';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
@@ -89,6 +96,17 @@ export class GameState {
     this.miningSystem = new MiningSystem();
     this.alchemySystem = new AlchemySystem();
     this.recruitSystem = new RecruitSystem();
+    this.smeltingSystem = new SmeltingSystem();
+    this.herbPrepSystem = new HerbPrepSystem();
+    this.repairSystem = new RepairSystem();
+    this.salesSystem = new SalesSystem();
+    this.transportSystem = new TransportSystem();
+    this.financeSystem = new FinanceSystem();
+    this.workerSystem = new WorkerSystem();
+
+    // 初始化矿脉
+    this.miningSystem.init();
+    this.repairSystem.init();
 
     this.triggeredEvents = this.eventSystem.triggeredEvents;
 
@@ -328,8 +346,26 @@ export class GameState {
     // 铁道采矿
     this.miningSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
 
-    // 妙手炼丹
+    // 冶炼
+    this.smeltingSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 药材处理
+    this.herbPrepSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 炼丹
     this.alchemySystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 炉工维修
+    this.repairSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 销售
+    this.salesSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 运输
+    this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+
+    // 工人权益
+    this.workerSystem.tick(isNewDay, this.characters, this.financeSystem, (msg) => this.addLog(msg));
 
     // 建筑建造队列
     if (this.buildQueue.length > 0) {
