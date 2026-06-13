@@ -93,10 +93,16 @@ export const HERB_QUALITY_AURA_BONUS = 0.8;   // 灵气每+10点，品质权重�
 export const NPC_SPIRIT_AURA_THRESHOLD = 40;
 
 // ====== 招募系统 ======
+export const OVERTIME_RATES = {
+  weekday: 1.5,
+  weekend: 2.0,
+  holiday: 3.0,
+};
+
 // 农民队长去附近村庄招募普通农民
 export const RECRUIT_TICKS_SELF = 10;         // 亲自去耗时：1天 = 10 tick（去1天，选人后回1天）
 export const RECRUIT_TICKS_DELEGATE = 20;     // 派人去耗时：2天 = 20 tick（往返）
-export const RECRUIT_COST = 50;             // 每次招募消耗银两（路费+饭钱）
+export const RECRUIT_COST = 5;              // 招募路费（银两，仅车马费）
 export const RECRUIT_POOL_SIZE = 10;          // 候选人池大小（十选三）
 export const RECRUIT_RETURN_TICKS = 10;       // 亲自去选完人后回程：1天 = 10 tick
 // 最大招募人数由交通工具决定（驴车3人，马车5人，牛车7人）

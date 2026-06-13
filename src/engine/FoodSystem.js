@@ -2,6 +2,7 @@
  * 食物消耗系统 - 路灯计划
  *
  * 管理每日食物消耗、饥饿惩罚和心情影响。
+ * 只有玩家消耗食物，工人通过月薪领取报酬自行购买食物。
  */
 
 import { FOOD_PER_PERSON } from './constants';
@@ -13,15 +14,11 @@ export class FoodSystem {
   }
 
   get dailyConsumption() {
-    return this.population * this.foodPerPerson;
+    return this.foodPerPerson; // 只算玩家1人
   }
 
   /**
-   * 每日食物消耗
-   * @param {WarehouseSystem} warehouse - 仓库系统
-   * @param {Character} player - 玩家角色
-   * @param {number} [consumptionMultiplier=1] - 消耗乘数（<1 表示减免）
-   * @returns {{ logs: string[], notifications: string[], moodDelta: number }}
+   * 每日食物消耗（仅玩家）
    */
   consumeDaily(warehouse, player, consumptionMultiplier = 1) {
     const logs = [];
@@ -33,7 +30,7 @@ export class FoodSystem {
 
     if (wheatAmount >= needed) {
       warehouse.removeItem('food', 'wheat', needed);
-      moodDelta = 1; // 吃饱了心情恢复
+      moodDelta = 1;
     } else if (wheatAmount > 0) {
       warehouse.removeItem('food', 'wheat', wheatAmount);
       logs.push(`食物不足！只够吃${wheatAmount}单位...`);

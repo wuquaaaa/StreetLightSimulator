@@ -79,6 +79,13 @@ function CandidateChoicePopup({ candidates, onToggle, onConfirm, onSkip, hiredCo
                 {c.appearance && (
                   <div className="text-[10px] text-stone-600 italic mb-1 pl-6">{c.appearance}</div>
                 )}
+                {/* 期望薪资 */}
+                {c.salaryDemand != null && (
+                  <div className="ml-6 text-[10px] text-amber-400/80 mb-1">
+                    💰 期望月薪: {c.salaryDemand} 两
+                    {c.maxWorkHours && <span className="ml-2 text-stone-500">⏰ 最大工时: {c.maxWorkHours}h</span>}
+                  </div>
+                )}
                 {/* 知客等级2+：看出身 */}
                 {visibility.showOrigin && c.originTrait && (
                   <span className="ml-6 text-[9px] px-1.5 py-0.5 bg-amber-900/30 border border-amber-800/30 rounded text-amber-400/80">

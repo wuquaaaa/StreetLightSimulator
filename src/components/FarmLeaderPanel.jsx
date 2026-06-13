@@ -4,7 +4,8 @@ import { FIELD_STATE, FIELD_DISPLAY } from '../engine/FarmSystem';
 import { FARM_EXPAND_TICKS, RECRUIT_POOL_SIZE } from '../engine/constants';
 import { getMoodInfo } from '../engine/Character';
 import { CROPS } from '../data/crops';
-import { OVERTIME_RATES, BENEFIT_RATES } from '../engine/FinanceSystem';
+import { BENEFIT_RATES } from '../engine/FinanceSystem';
+import { OVERTIME_RATES } from '../engine/constants';
 
 // 获取plot的分配角色名列表
 function getAssignedNames(plot, farmers) {

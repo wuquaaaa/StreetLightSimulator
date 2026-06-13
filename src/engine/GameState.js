@@ -231,13 +231,18 @@ export class GameState {
     }
     // step 10 不再自动触发，由教程按钮手动推进
 
-    // 食物消耗
+    // 食物消耗（仅玩家）
     const consumptionMul = this.warehouse.fangshiActive ? (1 - FANGSHI_CONSUMPTION_REDUCTION) : 1;
     const foodResult = this.foodSystem.consumeDaily(this.warehouse, this.player, consumptionMul);
     foodResult.logs.forEach(msg => this.addLog(msg));
     foodResult.notifications.forEach(msg => this.addNotification(msg));
     if (foodResult.moodDelta !== 0) {
       this.player.changeMood(foodResult.moodDelta);
+    }
+
+    // 每月发薪（每30天）
+    if (this.day % 30 === 0 && this.characters.length > 0) {
+      this.financeSystem.processMonthlyPayroll(this.characters, (msg) => this.addLog(msg));
     }
 
     // NPC 揭示进度

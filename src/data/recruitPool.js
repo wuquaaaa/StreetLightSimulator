@@ -16,32 +16,27 @@ export const RECRUIT_BACKGROUNDS = {
     name: '村民',
     icon: '🏘️',
     description: '朴实的农民，力气大但见识少',
-    unlockCondition: null,  // 默认可用
-    weight: 40,             // 出现权重
-    // 属性范围
+    unlockCondition: null,
+    weight: 40,
     attributes: {
-      constitution: { min: 40, max: 80 },   // 体质高
-      learning: { min: 10, max: 40 },       // 悟性低
-      focus: { min: 20, max: 60 },          // 专注一般
+      constitution: { min: 40, max: 80 },
+      learning: { min: 10, max: 40 },
+      focus: { min: 20, max: 60 },
     },
-    // 薪资要求（月薪）
-    salaryDemand: { min: 60, max: 120 },
-    // 工时偏好（最大接受工时）
-    maxWorkHours: 14,          // 能接受长时间工作
-    // 特质权重调整
+    // 期望月薪（银两，明朝参考：农夫约0.5-1两/月）
+    salaryDemand: { min: 0.5, max: 1.5 },
+    maxWorkHours: 14,
     traitWeights: {
-      peasant: 50,             // 农民出身概率高
+      peasant: 50,
       hunter: 15,
       fisherman: 10,
       vagrant: 15,
       orphan: 10,
     },
-    // 通用特质概率
     generalTraitChance: 0.3,
-    // 心情影响因素
     moodFactors: {
-      salaryImportant: 0.8,    // 薪资对心情影响大
-      hoursImportant: 0.2,     // 工时影响小
+      salaryImportant: 0.8,
+      hoursImportant: 0.2,
     },
   },
   village_worker: {
@@ -56,8 +51,9 @@ export const RECRUIT_BACKGROUNDS = {
       learning: { min: 5, max: 30 },
       focus: { min: 15, max: 45 },
     },
-    salaryDemand: { min: 80, max: 150 },
-    maxWorkHours: 16,          // 能吃苦
+    // 期望月薪（明朝参考：工匠约1-2两/月）
+    salaryDemand: { min: 1, max: 2.5 },
+    maxWorkHours: 16,
     traitWeights: {
       miner: 30,
       blacksmith: 20,
@@ -85,8 +81,9 @@ export const RECRUIT_BACKGROUNDS = {
       learning: { min: 30, max: 70 },
       focus: { min: 30, max: 65 },
     },
-    salaryDemand: { min: 100, max: 200 },
-    maxWorkHours: 10,          // 不愿意加班
+    // 期望月薪（城镇青年要求更高，约2-4两/月）
+    salaryDemand: { min: 2, max: 4 },
+    maxWorkHours: 10,
     traitWeights: {
       merchant: 20,
       scholar_family: 15,
@@ -97,11 +94,10 @@ export const RECRUIT_BACKGROUNDS = {
     generalTraitChance: 0.5,
     moodFactors: {
       salaryImportant: 0.5,
-      hoursImportant: 0.5,     // 工时和薪资一样重要
+      hoursImportant: 0.5,
     },
   },
 
-  // ====== 城市学者（知客Lv2+解锁） ======
   city_scholar: {
     id: 'city_scholar',
     name: '城中学子',
@@ -114,8 +110,9 @@ export const RECRUIT_BACKGROUNDS = {
       learning: { min: 60, max: 95 },
       focus: { min: 50, max: 85 },
     },
-    salaryDemand: { min: 150, max: 300 },
-    maxWorkHours: 8,           // 只接受标准工时
+    // 期望月薪（读书人要求高，约4-8两/月）
+    salaryDemand: { min: 4, max: 8 },
+    maxWorkHours: 8,
     traitWeights: {
       scholar_family: 40,
       merchant: 15,
@@ -126,11 +123,10 @@ export const RECRUIT_BACKGROUNDS = {
     generalTraitChance: 0.7,
     moodFactors: {
       salaryImportant: 0.4,
-      hoursImportant: 0.6,     // 工时更重要
+      hoursImportant: 0.6,
     },
   },
 
-  // ====== 修仙散人（知客Lv3 + 仙法解锁后） ======
   cultivator: {
     id: 'cultivator',
     name: '修仙散人',
@@ -143,7 +139,8 @@ export const RECRUIT_BACKGROUNDS = {
       learning: { min: 70, max: 100 },
       focus: { min: 60, max: 95 },
     },
-    salaryDemand: { min: 250, max: 500 },
+    // 期望月薪（修仙者要求最高，约8-15两/月）
+    salaryDemand: { min: 8, max: 15 },
     maxWorkHours: 8,
     traitWeights: {
       herb_apprentice: 30,
@@ -152,11 +149,10 @@ export const RECRUIT_BACKGROUNDS = {
       vagrant: 10,
     },
     generalTraitChance: 0.8,
-    // 仙法相关
-    hasCultivation: true,      // 自带仙法基础
+    hasCultivation: true,
     moodFactors: {
       salaryImportant: 0.3,
-      hoursImportant: 0.7,     // 最看重自由时间
+      hoursImportant: 0.7,
     },
   },
 };
