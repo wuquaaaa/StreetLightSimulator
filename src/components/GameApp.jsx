@@ -12,6 +12,7 @@ import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
 import CrafterPanel from './CrafterPanel';
 import HerbAlchemyPanel from './HerbAlchemyPanel';
+import ShopPanel from './ShopPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
@@ -245,6 +246,9 @@ export default function GameApp() {
       case 'herb_prepper':
       case 'alchemist':
         return <HerbAlchemyPanel game={game} onAction={handleAction} />;
+      case 'trader':
+      case 'porter':
+        return <ShopPanel game={game} onAction={handleAction} />;
       default:
         return <FarmPanel game={game} onAction={handleAction} />;
     }

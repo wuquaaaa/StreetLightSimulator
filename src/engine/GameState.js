@@ -657,6 +657,32 @@ export class GameState {
         result = this.alchemySystem.startCrafting(params.recipeId, npcAlchemy, this.warehouse);
         break;
       }
+      case 'set_item_price': {
+        result = this.salesSystem.setPrice(params.itemId, params.price);
+        break;
+      }
+      case 'stock_shop_item': {
+        const stockAmt = this.warehouse.getItemAmount(params.category, params.itemId);
+        if (stockAmt <= 0) {
+          result = { success: false, message: '仓库没有该物品' };
+          break;
+        }
+        this.warehouse.removeItem(params.category, params.itemId, 1);
+        result = this.salesSystem.stockItem(params.itemId, params.itemId, 1, 10);
+        break;
+      }
+      case 'haggle_customer': {
+        result = this.salesSystem.haggle(params.customerIndex, params.offerPrice);
+        if (result.sold) {
+          this.warehouse.addItem('currency', 'silver', '银两', result.price);
+        }
+        break;
+      }
+      case 'start_transport': {
+        const npcPorter = this._findCharacter(this.player.id);
+        result = this.transportSystem.startTrip(params.routeId, npcPorter, params.cargo || 'materials', params.amount || 10);
+        break;
+      }
       case 'mine_ore': {
         const { veinId } = params;
         result = this.miningSystem.mine(veinId, this.player);
