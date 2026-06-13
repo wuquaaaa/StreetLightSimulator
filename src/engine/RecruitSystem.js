@@ -11,6 +11,7 @@ import { rollOriginTrait, rollGeneralTraits } from '../data/traits';
 import { rollFate } from '../data/fates';
 import { getVehicleInfo, getNextVehicle } from '../data/transport';
 import { getHRLevel, pickBestByPreference, RECRUIT_PREFERENCES } from '../data/hr-levels';
+import { rollBackground, generateCandidateAttributes, generateSalaryDemand } from '../data/recruitPool';
 import {
   RECRUIT_TICKS_SELF, RECRUIT_TICKS_DELEGATE, RECRUIT_FOOD_COST, RECRUIT_POOL_SIZE,
   RECRUIT_RETURN_TICKS,
@@ -38,7 +39,7 @@ export class RecruitSystem {
 
   // ====== 候选人池 ======
 
-  refreshCandidatePool(existingNames) {
+  refreshCandidatePool(existingNames, hrLevel = 1, hasCultivation = false) {
     const pool = [];
     const existing = new Set(existingNames);
 
@@ -47,11 +48,26 @@ export class RecruitSystem {
       const name = generateName(gender, existing);
       existing.add(name);
       const age = 18 + Math.floor(Math.random() * 35);
+
+      // 按背景生成候选人
+      const background = rollBackground(hrLevel, hasCultivation);
+      const attrs = generateCandidateAttributes(background);
+      const salaryDemand = generateSalaryDemand(background);
+
       const originTrait = rollOriginTrait();
-      const generalTraits = rollGeneralTraits(Math.random() < 0.3 ? 2 : 1);
+      const generalTraits = rollGeneralTraits(Math.random() < background.generalTraitChance ? 2 : 1);
       const fate = rollFate();
       const appearance = generateAppearance(gender, age);
-      pool.push({ name, gender, age, originTrait, generalTraits, fate, appearance });
+
+      pool.push({
+        name, gender, age, originTrait, generalTraits, fate, appearance,
+        background: background.id,
+        backgroundName: background.name,
+        backgroundIcon: background.icon,
+        salaryDemand,
+        maxWorkHours: background.maxWorkHours,
+        attributes: attrs,
+      });
     }
 
     this.recruitCandidatePool = pool;
@@ -327,6 +343,17 @@ export class RecruitSystem {
     } else {
       npc.knowledgeAttributes.farming = 3 + Math.floor(Math.random() * 5);
     }
+    // 候选人背景属性
+    if (candidateData.attributes) {
+      for (const [key, val] of Object.entries(candidateData.attributes)) {
+        if (key in npc.baseAttributes) {
+          npc.baseAttributes[key] = val;
+        }
+      }
+    }
+    npc.recruitBackground = candidateData.background || 'village_farmer';
+    npc.salaryDemand = candidateData.salaryDemand || 100;
+    npc.maxWorkHours = candidateData.maxWorkHours || 14;
     return npc;
   }
 

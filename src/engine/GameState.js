@@ -787,17 +787,21 @@ export class GameState {
     switch (action) {
       case 'leader_recruit': {
         const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
-        rs.refreshCandidatePool(existingNames);
+        const hrLv = this.currentHRLevel.level;
+        const hasCult = this.cultivationSystem && Object.keys(this.cultivationSystem.learnedArts).length > 0;
+        rs.refreshCandidatePool(existingNames, hrLv, hasCult);
         const result = rs.handleLeaderRecruit(this.warehouse, this.currentVehicle);
         if (result.success) {
           const vehicle = getVehicleInfo(this.currentVehicle);
-          this.addLog(`你赶着${vehicle.icon}${vehicle.name}来到村庄，有10位村民愿意跟随你。${vehicle.description}`);
+          this.addLog(`你赶着${vehicle.icon}${vehicle.name}出发去招募...${vehicle.description}`);
         }
         return result;
       }
       case 'delegate_recruit': {
         const existingNames = [this.player.name, ...this.characters.map(c => c.name)];
-        rs.refreshCandidatePool(existingNames);
+        const hrLv = this.currentHRLevel.level;
+        const hasCult = this.cultivationSystem && Object.keys(this.cultivationSystem.learnedArts).length > 0;
+        rs.refreshCandidatePool(existingNames, hrLv, hasCult);
         return rs.handleDelegateRecruit(params, this.warehouse, this.currentVehicle, this.characters, this.farm);
       }
       case 'recruit_choose':
@@ -1099,31 +1103,33 @@ export class GameState {
 
   /** 检查是否应该解锁新岗位（每日检查） */
   _checkJobUnlocks() {
-    // 矿工: 招募第一个NPC后解锁
-    if (this.characters.length >= 1 && !this.unlockedJobs.has('miner')) {
+    const npcCount = this.characters.length;
+
+    // 矿工: 3个NPC + 研究系统解锁
+    if (npcCount >= 3 && this.researchSystem?.unlocked && !this.unlockedJobs.has('miner')) {
       this.unlockJob('miner');
     }
-    // 炼铁匠: 矿工解锁后
-    if (this.unlockedJobs.has('miner') && !this.unlockedJobs.has('smelter')) {
+    // 炼铁匠: 矿工解锁 + 建造矿场
+    if (this.unlockedJobs.has('miner') && this.buildings.includes('mine') && !this.unlockedJobs.has('smelter')) {
       this.unlockJob('smelter');
     }
-    // 炉工: 炼铁匠解锁后
-    if (this.unlockedJobs.has('smelter') && !this.unlockedJobs.has('furnace_tender')) {
+    // 炉工: 炼铁匠解锁 + 建造冶炼炉
+    if (this.unlockedJobs.has('smelter') && this.buildings.includes('smelter_build') && !this.unlockedJobs.has('furnace_tender')) {
       this.unlockJob('furnace_tender');
     }
-    // 药童: 研究系统解锁后
-    if (this.researchSystem?.unlocked && !this.unlockedJobs.has('herb_prepper')) {
+    // 药童: 研究系统 + 建造药圃
+    if (this.researchSystem?.unlocked && this.buildings.includes('herb_garden') && !this.unlockedJobs.has('herb_prepper')) {
       this.unlockJob('herb_prepper');
     }
-    // 炼丹师: 药童解锁后
-    if (this.unlockedJobs.has('herb_prepper') && !this.unlockedJobs.has('alchemist')) {
+    // 炼丹师: 药童解锁 + 建造丹房
+    if (this.unlockedJobs.has('herb_prepper') && this.buildings.includes('alchemy_room') && !this.unlockedJobs.has('alchemist')) {
       this.unlockJob('alchemist');
     }
-    // 贩子: 建造商铺后
+    // 贩子: 建造商铺
     if (this.buildings.includes('shop') && !this.unlockedJobs.has('trader')) {
       this.unlockJob('trader');
     }
-    // 运工: 建造后山小径后
+    // 运工: 建造后山小径
     if (this.buildings.includes('mountain_trail') && !this.unlockedJobs.has('porter')) {
       this.unlockJob('porter');
     }
