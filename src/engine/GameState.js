@@ -227,10 +227,7 @@ export class GameState {
       this.tutorialStep = 5;
       this.addNotification('tutorial:recruit');
     }
-    if (this.tutorialStep === 9 && this.day >= 10) {
-      this.tutorialStep = 10;
-      this.addNotification('tutorial:build');
-    }
+    // step 10 不再自动触发，由教程按钮手动推进
 
     // 食物消耗
     const consumptionMul = this.warehouse.fangshiActive ? (1 - FANGSHI_CONSUMPTION_REDUCTION) : 1;

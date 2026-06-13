@@ -100,16 +100,16 @@ const TUTORIAL_STEPS = [
   {
     id: 9,
     title: '🎉 村民加入队伍！',
-    content: '恭喜！你成功带回了村民，队伍壮大了！\n\n你获得了「👨‍🌾 农民队长」身份！可以在右上角点击你的身份标签，切换到队长视角来管理整个农田。\n\n接下来：\n• 去【农田】分配地块给村民\n• 人员多了还可以建造【司务堂】研究岗位和功法',
+    content: '恭喜！你成功带回了村民，队伍壮大了！\n\n你获得了「👨‍🌾 农民队长」身份！可以管理整个农田。\n\n💡 切换岗位：点击左侧「当前岗位」→ 顶部会出现岗位切换栏，可以在不同岗位间切换。\n\n接下来：\n• 去【农田】分配地块给村民\n• 人多了可以建造【司务堂】研究岗位和功法\n• 也可以去【附近村庄】继续招人',
     position: 'center',
     nextLabel: '开始发展！',
-    isLastPhase: true, // 阶段二结束
+    isLastPhase: true,
   },
   // ===== 阶段三：建筑教学（第10天触发）=====
   {
     id: 10,
     title: '🏗 该建造些设施了',
-    content: '你的小领地已经初具规模，是时候建造一些设施来提升效率了！\n\n点击左侧导航栏的【建筑】，看看能建造什么吧。\n\n仓库扩容、司务堂……每一座建筑都会让你的领地更加强大。',
+    content: '你的小领地已经初具规模，是时候建造一些设施来提升效率了！\n\n点击左侧导航栏的【建筑】，看看能建造什么。\n\n💡 建造需要消耗材料（木材、石材等），先去【后山】采集资源，或者让矿工去采矿。材料够了再回来建造。\n\n推荐先建：\n• 后山小径 → 解锁采集木材/石材\n• 司务堂 → 解锁岗位研究和功法',
     position: 'left',
     nextLabel: null,
     autoLabel: '前往建筑…',
@@ -166,11 +166,8 @@ export function getTutorialStepFromGameState(game) {
   if (step === 9) return 9;
 
   // 阶段三：建筑教学（step 10-11）
-  // step 10: 等第10天
-  if (step === 10) {
-    if (game.day < 10) return null; // 第10天前不显示
-    return 10;
-  }
+  // step 10: 手动推进（不再自动触发）
+  if (step === 10) return 10;
 
   // step 11: 建筑界面引导
   if (step === 11) return 11;
@@ -277,12 +274,6 @@ export default function TutorialOverlay({ step, onNext, onSkip, game }) {
               </div>
             )}
 
-            {/* 步骤9：身份切换提示 */}
-            {step === 9 && (
-              <div className="mt-3 text-xs text-amber-300/80 bg-amber-900/20 rounded-lg px-3 py-2">
-                💡 点击右上角你的名字旁边的身份标签，可以切换农民/农民队长视角
-              </div>
-            )}
           </div>
 
           {/* 按钮 */}

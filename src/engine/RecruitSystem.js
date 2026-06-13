@@ -179,7 +179,7 @@ export class RecruitSystem {
     this.recruitTask.phase = 'returning';
     this.recruitTask.ticksRemaining = RECRUIT_RETURN_TICKS;
     this.recruitTask.totalTicks = RECRUIT_RETURN_TICKS;
-    return { success: true, message: msg, count, tutorialStep: 9 };
+    return { success: true, message: msg, count };
   }
 
   /** 亲自招募：放弃选择 */
