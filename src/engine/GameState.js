@@ -22,6 +22,7 @@ import { SalesSystem } from './SalesSystem';
 import { TransportSystem } from './TransportSystem';
 import { FinanceSystem } from './FinanceSystem';
 import { WorkerSystem } from './WorkerSystem';
+import { CultivationSystem } from './CultivationSystem';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
@@ -103,6 +104,7 @@ export class GameState {
     this.transportSystem = new TransportSystem();
     this.financeSystem = new FinanceSystem();
     this.workerSystem = new WorkerSystem();
+    this.cultivationSystem = new CultivationSystem();
 
     // 初始化矿脉
     this.miningSystem.init();
@@ -373,6 +375,9 @@ export class GameState {
 
     // 工人权益
     this.workerSystem.tick(isNewDay, this.characters, this.financeSystem, (msg) => this.addLog(msg));
+
+    // 仙法修炼
+    this.cultivationSystem.tick(isNewDay, [this.player, ...this.characters], this.warehouse, (msg) => this.addLog(msg));
 
     // 建筑建造队列
     if (this.buildQueue.length > 0) {
@@ -681,6 +686,19 @@ export class GameState {
       case 'start_transport': {
         const npcPorter = this._findCharacter(this.player.id);
         result = this.transportSystem.startTrip(params.routeId, npcPorter, params.cargo || 'materials', params.amount || 10);
+        break;
+      }
+      case 'start_cultivation': {
+        const targetChar = this._findCharacter(params.npcId);
+        if (!targetChar) {
+          result = { success: false, message: '找不到该角色' };
+          break;
+        }
+        result = this.cultivationSystem.startCultivation(params.npcId, params.artId, targetChar, this.warehouse);
+        break;
+      }
+      case 'cancel_cultivation': {
+        result = this.cultivationSystem.cancelCultivation(params.npcId);
         break;
       }
       case 'mine_ore': {

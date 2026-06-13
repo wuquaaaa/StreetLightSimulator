@@ -13,12 +13,13 @@ import ResearchPanel from './ResearchPanel';
 import CrafterPanel from './CrafterPanel';
 import HerbAlchemyPanel from './HerbAlchemyPanel';
 import ShopPanel from './ShopPanel';
+import CultivationPanel from './CultivationPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain, FileDown, Pickaxe } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain, FileDown, Pickaxe, Sparkles } from 'lucide-react';
 import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
@@ -231,6 +232,7 @@ export default function GameApp() {
     { id: 'warehouse', label: '仓库', icon: Package },
     ...(game.hallBuilt ? [{ id: 'research', label: '司务堂', icon: BookOpen }] : []),
     { id: 'character', label: '角色', icon: User },
+    ...(game.hallBuilt ? [{ id: 'cultivation', label: '仙法', icon: Sparkles }] : []),
   ];
 
   const renderJobContent = () => {
@@ -422,6 +424,7 @@ export default function GameApp() {
             {activeTab === 'warehouse' && <WarehousePanel game={game} onAction={handleAction} />}
             {activeTab === 'research' && <ResearchPanel game={game} onAction={handleAction} />}
             {activeTab === 'character' && <CharacterPanel game={game} />}
+            {activeTab === 'cultivation' && <CultivationPanel game={game} onAction={handleAction} />}
           </div>
 
           {/* 底部日志 */}
