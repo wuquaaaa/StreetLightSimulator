@@ -616,6 +616,77 @@ export class GameState {
         result = { success: true, message: `${postId}岗位工资设置已更新` };
         break;
       }
+      case 'mine_ore': {
+        const { veinId } = params;
+        result = this.miningSystem.mine(veinId, this.player);
+        if (result.success && result.oreId) {
+          const oreDef = { iron_ore: '铁矿石', copper_ore: '铜矿石', coal: '煤炭', spirit_stone_ore: '灵石原矿' };
+          const name = oreDef[result.oreId] || result.oreId;
+          this.warehouse.addItem('mineral', result.oreId, name, result.yield);
+        }
+        if (result.accident) {
+          this.player.changeMood(-5);
+        }
+        break;
+      }
+      case 'repair_tool': {
+        const { toolId } = params;
+        const materials = {};
+        for (const [cat, items] of Object.entries(this.warehouse.storage)) {
+          for (const [itemId, item] of Object.entries(items.items || {})) {
+            materials[itemId] = (materials[itemId] || 0) + item.amount;
+          }
+        }
+        result = this.miningSystem.repairTool(toolId, materials);
+        break;
+      }
+      case 'adjust_smelt_temp': {
+        result = this.smeltingSystem.adjustTemp(params.temp);
+        break;
+      }
+      case 'add_smelt_fuel': {
+        const coalAmt = this.warehouse.getItemAmount('fuel', 'coal');
+        const addAmt = Math.min(params.amount || 1, coalAmt);
+        if (addAmt > 0) {
+          this.warehouse.removeItem('fuel', 'coal', addAmt);
+          result = this.smeltingSystem.addFuel(addAmt);
+        } else {
+          result = { success: false, message: '没有煤炭了' };
+        }
+        break;
+      }
+      case 'repair_equipment': {
+        const { equipId } = params;
+        const equipDef = this.repairSystem.equipment?.[equipId];
+        if (!equipDef) {
+          result = { success: false, message: '未知设备' };
+          break;
+        }
+        const repairDef = { alchemy_furnace: { iron_ingot: 2, stone: 3 }, smelting_furnace: { iron_ingot: 3, stone: 5 } }[equipId];
+        if (!repairDef) {
+          result = { success: false, message: '无维修配方' };
+          break;
+        }
+        let canRepair = true;
+        for (const [itemId, amount] of Object.entries(repairDef)) {
+          if ((this.warehouse.getItemAmount('mineral', itemId) || 0) < amount) {
+            canRepair = false;
+            break;
+          }
+        }
+        if (!canRepair) {
+          result = { success: false, message: '维修材料不足' };
+          break;
+        }
+        for (const [itemId, amount] of Object.entries(repairDef)) {
+          this.warehouse.removeItem('mineral', itemId, amount);
+        }
+        const equip = this.repairSystem.equipment[equipId];
+        const repairAmount = Math.floor(equipDef.maxDurability * 0.4);
+        equip.durability = Math.min(equipDef.maxDurability, equip.durability + repairAmount);
+        result = { success: true, message: `维修完成，耐久度恢复${repairAmount}` };
+        break;
+      }
       default:
         result = { success: false, message: '未知操作' };
     }

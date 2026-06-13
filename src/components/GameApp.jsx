@@ -10,12 +10,13 @@ import GatherPanel from './GatherPanel';
 import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
+import CrafterPanel from './CrafterPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
 import EventPopup from './EventPopup';
 import { getRoleInfo } from '../data/roles';
-import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain, FileDown } from 'lucide-react';
+import { Wheat, Package, User, Pause, Play, Save, Download, Music, BookOpen, MapPin, Hammer, Mountain, FileDown, Pickaxe } from 'lucide-react';
 import TutorialOverlay, { getTutorialStepFromGameState } from './TutorialOverlay';
 
 const TICK_INTERVAL = 2000;
@@ -202,6 +203,7 @@ export default function GameApp() {
   // 侧边栏 tab 列表（司务堂只在建好后显示）
   const sideTabs = [
     { id: 'farm', label: '农田', icon: Wheat },
+    { id: 'workshop', label: '工坊', icon: Pickaxe },
     { id: 'village', label: '附近村庄', icon: MapPin },
     { id: 'building', label: '建筑', icon: Hammer },
     ...(game.gatherSystem?.unlocked
@@ -341,6 +343,7 @@ export default function GameApp() {
 
           <div className="flex-1 overflow-y-auto p-5">
             {activeTab === 'farm' && renderFarmContent()}
+            {activeTab === 'workshop' && <CrafterPanel game={game} onAction={handleAction} />}
             {activeTab === 'village' && <RecruitPanel game={game} onAction={handleAction} />}
             {activeTab === 'building' && <BuildPanel game={game} onAction={handleAction} />}
             {activeTab === 'gather' && <GatherPanel game={game} onAction={handleAction} />}
