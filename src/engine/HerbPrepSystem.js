@@ -163,7 +163,7 @@ export class HerbPrepSystem {
     eff *= 0.5 + (focus / 100) * 1.0;
 
     // 学习天赋
-    const learning = character.baseAttributes?.learningTalent || 50;
+    const learning = character.baseAttributes?.learning || 50;
     eff *= 0.7 + (learning / 100) * 0.6;
 
     // 年龄

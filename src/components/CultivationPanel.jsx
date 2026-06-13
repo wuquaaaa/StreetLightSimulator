@@ -194,7 +194,7 @@ export default function CultivationPanel({ game, onAction }) {
         </div>
         {displayChar && (
           <div className="mt-2 text-[10px] text-stone-500">
-            悟性: <span className="text-amber-400">{displayChar.baseAttributes?.learningTalent || 50}</span>
+            悟性: <span className="text-amber-400">{displayChar.baseAttributes?.learning || 50}</span>
             {' · 已学仙法: '}
             <span className="text-purple-400">{Object.keys(learnedArts).length}</span>
             {currentCultivating && (

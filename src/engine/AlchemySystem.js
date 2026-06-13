@@ -179,7 +179,7 @@ export class AlchemySystem {
     qualityScore += (focus - 50) * 0.5;
 
     // 学习天赋
-    const learning = character.baseAttributes?.learningTalent || 50;
+    const learning = character.baseAttributes?.learning || 50;
     qualityScore += (learning - 50) * 0.3;
 
     // 炉温匹配
@@ -210,7 +210,7 @@ export class AlchemySystem {
     const focus = character.baseAttributes?.focus || 50;
     eff *= 0.5 + (focus / 100) * 1.0;
 
-    const learning = character.baseAttributes?.learningTalent || 50;
+    const learning = character.baseAttributes?.learning || 50;
     eff *= 0.6 + (learning / 100) * 0.8;
 
     if (typeof character.getAgeEfficiencyModifier === 'function') {

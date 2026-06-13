@@ -56,25 +56,19 @@ export class CultivationSystem {
 
     // 检查仙草消耗
     const herbId = levelData.herbCost;
-    const herbAmount = warehouse.getItemAmount('herb', herbId)
-      + warehouse.getItemAmount('immortal_herb', herbId);
+    const herbAmount = warehouse.getItemAmount('herb', herbId);
     if (herbAmount < 1) {
       return { success: false, message: `需要${herbId}进行修炼` };
     }
 
     // 消耗仙草
-    let consumed = false;
-    if (warehouse.getItemAmount('herb', herbId) > 0) {
-      consumed = warehouse.removeItem('herb', herbId, 1).success;
-    } else {
-      consumed = warehouse.removeItem('immortal_herb', herbId, 1).success;
-    }
+    const consumed = warehouse.removeItem('herb', herbId, 1).success;
     if (!consumed) {
       return { success: false, message: '消耗仙草失败' };
     }
 
     // 计算修炼时间（受悟性影响）
-    const learning = character.baseAttributes?.learningTalent || 50;
+    const learning = character.baseAttributes?.learning || 50;
     const speedMod = 1 + (learning - 50) / 100 * LEARNING_SPEED_FACTOR;
     const totalTicks = Math.ceil(levelData.learnTime * TICKS_PER_DAY / speedMod);
 
@@ -155,7 +149,7 @@ export class CultivationSystem {
         continue;
       }
 
-      const learning = character.baseAttributes?.learningTalent || 50;
+      const learning = character.baseAttributes?.learning || 50;
       const speedMod = 1 + (learning - 50) / 100 * LEARNING_SPEED_FACTOR;
       cult.progress += BASE_CULTIVATION_PER_DAY * speedMod;
 
