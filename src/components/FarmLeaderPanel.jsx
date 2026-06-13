@@ -403,23 +403,63 @@ function WorkerWelfareTab({ game, onAction }) {
         <div className="text-xs text-stone-400 font-semibold mb-3 flex items-center gap-1.5">
           <Coins size={12} /> 默认设置（新工人适用）
         </div>
+
+        {/* 薪资模式切换 */}
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => setLocalDefault(s => ({ ...s, payMode: 'salary' }))}
+            className={`flex-1 py-1.5 text-xs rounded transition-colors ${
+              localDefault.payMode === 'salary' ? 'bg-amber-700/60 text-amber-200' : 'bg-stone-700/40 text-stone-500'
+            }`}>
+            📋 包薪制（固定月薪）
+          </button>
+          <button onClick={() => setLocalDefault(s => ({ ...s, payMode: 'overtime' }))}
+            className={`flex-1 py-1.5 text-xs rounded transition-colors ${
+              localDefault.payMode === 'overtime' ? 'bg-orange-700/60 text-orange-200' : 'bg-stone-700/40 text-stone-500'
+            }`}>
+            ⏰ 加班制（多劳多得）
+          </button>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] text-stone-500 block mb-1">月薪（银两/月）</label>
-            <input type="number" step="0.1" min="0"
-              value={localDefault.baseSalary}
-              onChange={(e) => setLocalDefault(s => ({ ...s, baseSalary: parseFloat(e.target.value) || 0 }))}
-              className="w-full bg-stone-700 text-amber-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-amber-500 text-center"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-stone-500 block mb-1">标准工时（小时/天）</label>
-            <input type="number" step="1" min="1" max="16"
-              value={localDefault.standardHours}
-              onChange={(e) => setLocalDefault(s => ({ ...s, standardHours: parseInt(e.target.value) || 8 }))}
-              className="w-full bg-stone-700 text-blue-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500 text-center"
-            />
-          </div>
+          {localDefault.payMode === 'salary' ? (
+            <>
+              <div>
+                <label className="text-[10px] text-stone-500 block mb-1">月薪（银两/月）</label>
+                <input type="number" step="0.1" min="0"
+                  value={localDefault.baseSalary}
+                  onChange={(e) => setLocalDefault(s => ({ ...s, baseSalary: parseFloat(e.target.value) || 0 }))}
+                  className="w-full bg-stone-700 text-amber-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-amber-500 text-center"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-stone-500 block mb-1">标准工时（小时/天）</label>
+                <input type="number" step="1" min="1" max="16"
+                  value={localDefault.standardHours}
+                  onChange={(e) => setLocalDefault(s => ({ ...s, standardHours: parseInt(e.target.value) || 8 }))}
+                  className="w-full bg-stone-700 text-blue-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="text-[10px] text-stone-500 block mb-1">时薪（银两/时）</label>
+                <input type="number" step="0.01" min="0"
+                  value={localDefault.hourlyRate || (localDefault.baseSalary / (localDefault.standardHours * 30)).toFixed(3)}
+                  onChange={(e) => setLocalDefault(s => ({ ...s, hourlyRate: parseFloat(e.target.value) || 0 }))}
+                  className="w-full bg-stone-700 text-amber-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-amber-500 text-center"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-stone-500 block mb-1">加班费率（倍）</label>
+                <input type="number" step="0.1" min="1" max="3"
+                  value={localDefault.overtimeRate}
+                  onChange={(e) => setLocalDefault(s => ({ ...s, overtimeRate: parseFloat(e.target.value) || 1.5 }))}
+                  className="w-full bg-stone-700 text-orange-400 text-sm px-2 py-1 rounded outline-none focus:ring-1 focus:ring-orange-500 text-center"
+                />
+              </div>
+            </>
+          )}
         </div>
         <div className="flex gap-3 mt-3">
           <button onClick={() => setLocalDefault(s => ({ ...s, mealAllowance: !s.mealAllowance }))}

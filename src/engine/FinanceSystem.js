@@ -1,16 +1,11 @@
 /**
  * 财务系统 - 路灯计划
  *
- * 月薪制（明朝薪资参考）：
- * - 农夫：1两/月（最低，仅供温饱）
- * - 矿工：1.5两/月（危险补贴）
- * - 炼丹师：4两/月（高技术）
- * - 贩子：3两/月（有提成）
+ * 两种薪资模式：
+ * - 加班制：按工时计费，多劳多得，工人自定工时
+ * - 包薪制：固定月薪，不管工时，适合管理岗
  *
- * 薪资期望浮动：
- * - 连续3个月领取高于期望的薪资 → 期望上调（锚定效应）
- * - 低于期望 → 心情下降
- * - 这就是"涨了回不去"的资本困境
+ * 月薪 = 模式决定的工资 + 五险一金 + 福利
  */
 
 import { OVERTIME_RATES } from './constants';
@@ -19,16 +14,13 @@ export const BENEFIT_RATES = {
   pension: 0.08, medical: 0.02, unemployment: 0.005,
   injury: 0.005, maternity: 0.008, housing: 0.12,
 };
-
 const INJURY_SURCHARGE = { miner: 0.02, smelter: 0.01 };
 
-// 岗位默认月薪（明朝参考：农夫约1两/月）
 export const DEFAULT_MONTHLY_SALARY = {
   farmer: 1, miner: 1.5, smelter: 2.5, herb_prepper: 1.5,
   alchemist: 4, furnace_tender: 2, trader: 3, porter: 1.5,
 };
 
-// 背景加成倍率
 const BACKGROUND_SALARY_MULT = {
   village_farmer: 1.0, village_worker: 1.1,
   city_youth: 1.5, city_scholar: 2.0, cultivator: 3.0,
@@ -41,29 +33,27 @@ function getAgeModifier(age) {
   return 1.2;
 }
 
-// 薪资锚定阈值（连续多少个月后调整期望）
-const SALARY_LOCK_MONTHS = 3;
-
 export class FinanceSystem {
   constructor() {
     this.treasury = 0;
 
-    // 默认岗位工资
     this.wageSettings = {};
     for (const [post, salary] of Object.entries(DEFAULT_MONTHLY_SALARY)) {
       this.wageSettings[post] = {
-        baseSalary: salary, overtimeRate: OVERTIME_RATES.weekday,
-        maxOvertime: 4, standardHours: 8,
-        mealAllowance: false, housing: false, insurance: true,
+        baseSalary: salary,
+        payMode: 'salary',        // 'salary' 包薪制 | 'overtime' 加班制
+        standardHours: 8,
+        overtimeRate: 1.5,        // 加班制时的加班费率
+        hourlyRate: null,         // 加班制时的时薪（null=自动计算）
+        mealAllowance: false,
+        housing: false,
+        insurance: true,
       };
     }
 
     this.lastPayDay = 0;
   }
 
-  // ====== 薪资计算 ======
-
-  /** 计算NPC的期望月薪（招募时显示） */
   calculateExpectedSalary(character) {
     const postId = character.posts?.[0] || 'farmer';
     const background = character.recruitBackground || 'village_farmer';
@@ -72,8 +62,7 @@ export class FinanceSystem {
     const ageMult = getAgeModifier(character.age || 25);
     const learning = character.baseAttributes?.learning || 50;
     const learningMult = 1 + (learning - 50) / 200;
-    const expected = baseSalary * bgMult * ageMult * learningMult;
-    return Math.round(expected * 10) / 10;
+    return Math.round(baseSalary * bgMult * ageMult * learningMult * 10) / 10;
   }
 
   setWageSettings(postId, settings) {
@@ -81,36 +70,44 @@ export class FinanceSystem {
     return { success: true };
   }
 
-  /** 计算单个NPC的月薪（含加班费+五险一金） */
   calculateMonthlyWage(character, postId) {
     const settings = this.wageSettings[postId] || this.wageSettings['farmer'];
     const baseSalary = settings.baseSalary;
+    const payMode = settings.payMode || 'salary';
     const standardHours = settings.standardHours || 8;
     const overtimeRate = settings.overtimeRate || 1.5;
 
-    // 加班费：超过标准工时的部分按加班费率计算
-    const workerState = character._workerState;
-    const overtimeHours = workerState?.overtimeHours || 0;
-    const hourlyRate = baseSalary / (standardHours * 30); // 时薪
-    const overtimePay = overtimeHours * 30 * hourlyRate * overtimeRate; // 月加班费
+    let basePay, overtimePay = 0;
 
-    // 五险一金（按 baseSalary 计算）
+    if (payMode === 'overtime') {
+      // 加班制：按实际工时计费
+      const workerState = character._workerState;
+      const actualHours = (workerState?.workHours || standardHours) + (workerState?.overtimeHours || 0);
+      const hourlyRate = settings.hourlyRate || (baseSalary / (standardHours * 30));
+      basePay = actualHours * 30 * hourlyRate;
+      // 超出标准工时的部分按加班费率
+      if (actualHours > standardHours) {
+        const extraHours = actualHours - standardHours;
+        overtimePay = extraHours * 30 * hourlyRate * (overtimeRate - 1); // 额外部分
+      }
+    } else {
+      // 包薪制：固定月薪
+      basePay = baseSalary;
+    }
+
     const benefitRate = this._getBenefitRate(postId);
-    const benefitCost = baseSalary * benefitRate;
-
-    // 福利
+    const benefitCost = basePay * benefitRate;
     const welfareCost = (settings.mealAllowance ? 0.5 : 0) + (settings.housing ? 0.3 : 0);
 
     return {
-      base: baseSalary,
+      base: Math.round(basePay * 10) / 10,
       overtime: Math.round(overtimePay * 10) / 10,
       benefit: Math.round(benefitCost * 10) / 10,
       welfare: Math.round(welfareCost * 10) / 10,
-      total: Math.round((baseSalary + overtimePay + benefitCost + welfareCost) * 10) / 10,
+      total: Math.round((basePay + overtimePay + benefitCost + welfareCost) * 10) / 10,
     };
   }
 
-  /** 计算所有工人的月薪总成本 */
   calculateMonthlyCost(allCharacters) {
     let totalBase = 0, totalOvertime = 0, totalBenefit = 0, totalWelfare = 0;
     for (const char of allCharacters) {
@@ -125,14 +122,12 @@ export class FinanceSystem {
     return { totalBase, totalOvertime, totalBenefit, totalWelfare, total: totalBase + totalOvertime + totalBenefit + totalWelfare };
   }
 
-  // ====== 每月发薪 + 薪资锚定 ======
-
   processMonthlyPayroll(allCharacters, logFn) {
     const cost = this.calculateMonthlyCost(allCharacters);
     if (cost.total <= 0) return;
 
     if (this.treasury < cost.total) {
-      logFn(`⚠️ 国库不足！需要 ${cost.total} 银两发工资，当前只有 ${this.treasury} 银两`);
+      logFn(`⚠️ 国库不足！需要 ${cost.total.toFixed(2)} 银两，当前只有 ${this.treasury.toFixed(2)} 银两`);
       for (const char of allCharacters) {
         if (!char.isRetired && !char.isPlayer) char.changeMood(-10);
       }
@@ -140,36 +135,28 @@ export class FinanceSystem {
     }
 
     this.treasury -= cost.total;
-    logFn(`💰 本月发放工资 ${cost.total} 银两（底薪${cost.totalBase} + 五险一金${cost.totalBenefit} + 福利${cost.totalWelfare}）`);
+    logFn(`💰 本月发放工资 ${cost.total.toFixed(2)} 银两`);
 
-    // 每个工人：薪资心情 + 锚定检查
     for (const char of allCharacters) {
       if (char.isRetired || char.isPlayer) continue;
-
       const postId = char.posts?.[0] || 'farmer';
       const actualSalary = this.wageSettings[postId]?.baseSalary || 1;
       const expectedSalary = char.salaryDemand || this.calculateExpectedSalary(char);
 
-      // 薪资心情
-      if (actualSalary > expectedSalary) {
-        char.changeMood(3);  // 高于期望：开心
-      } else if (actualSalary < expectedSalary) {
-        char.changeMood(-5); // 低于期望：不满
-      } else {
-        char.changeMood(1);  // 刚好：满意
-      }
+      if (actualSalary > expectedSalary) char.changeMood(3);
+      else if (actualSalary < expectedSalary) char.changeMood(-5);
+      else char.changeMood(1);
 
-      // 薪资锚定：连续3个月领取高于期望的薪资 → 期望上调
       if (actualSalary > expectedSalary) {
         char._salaryAboveCount = (char._salaryAboveCount || 0) + 1;
-        if (char._salaryAboveCount >= SALARY_LOCK_MONTHS) {
-          const oldDemand = char.salaryDemand;
-          char.salaryDemand = actualSalary; // 锚定到当前薪资
+        if (char._salaryAboveCount >= 3) {
+          const old = char.salaryDemand;
+          char.salaryDemand = actualSalary;
           char._salaryAboveCount = 0;
-          logFn(`📊 ${char.name}的薪资期望从 ${oldDemand}两 调整为 ${actualSalary}两`);
+          logFn(`📊 ${char.name}的薪资期望从 ${old.toFixed(2)}两 调整为 ${actualSalary.toFixed(2)}两`);
         }
       } else {
-        char._salaryAboveCount = 0; // 重置计数
+        char._salaryAboveCount = 0;
       }
     }
   }
@@ -180,12 +167,10 @@ export class FinanceSystem {
     return rate;
   }
 
-  // ====== 存档 ======
-
   toJSON() {
     return {
       treasury: this.treasury,
-      wageSettings: { ...this.wageSettings },
+      wageSettings: JSON.parse(JSON.stringify(this.wageSettings)),
       lastPayDay: this.lastPayDay,
     };
   }
