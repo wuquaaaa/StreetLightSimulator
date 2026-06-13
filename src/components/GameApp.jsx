@@ -11,6 +11,7 @@ import WarehousePanel from './WarehousePanel';
 import CharacterPanel from './CharacterPanel';
 import ResearchPanel from './ResearchPanel';
 import CrafterPanel from './CrafterPanel';
+import HerbAlchemyPanel from './HerbAlchemyPanel';
 import GameLog from './GameLog';
 import NotificationPopup from './NotificationPopup';
 import SaveLoadPanel from './SaveLoadPanel';
@@ -241,6 +242,9 @@ export default function GameApp() {
       case 'smelter':
       case 'furnace_tender':
         return <CrafterPanel game={game} onAction={handleAction} />;
+      case 'herb_prepper':
+      case 'alchemist':
+        return <HerbAlchemyPanel game={game} onAction={handleAction} />;
       default:
         return <FarmPanel game={game} onAction={handleAction} />;
     }

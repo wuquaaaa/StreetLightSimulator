@@ -627,6 +627,36 @@ export class GameState {
         result = this.switchJob(params.jobId);
         break;
       }
+      case 'start_herb_prep': {
+        const npc = this._findCharacter(this.player.id);
+        result = this.herbPrepSystem.startProcessing(params.herbId, npc);
+        break;
+      }
+      case 'rush_herb_prep': {
+        const npcRush = this._findCharacter(this.player.id);
+        result = this.herbPrepSystem.rushStage(npcRush);
+        break;
+      }
+      case 'adjust_alchemy_temp': {
+        result = this.alchemySystem.adjustTemp(params.temp);
+        break;
+      }
+      case 'add_alchemy_fuel': {
+        const coalAmt = this.warehouse.getItemAmount('fuel', 'coal');
+        const addAmt = Math.min(params.amount || 1, coalAmt);
+        if (addAmt > 0) {
+          this.warehouse.removeItem('fuel', 'coal', addAmt);
+          result = this.alchemySystem.addFuel(addAmt);
+        } else {
+          result = { success: false, message: '没有煤炭了' };
+        }
+        break;
+      }
+      case 'start_alchemy': {
+        const npcAlchemy = this._findCharacter(this.player.id);
+        result = this.alchemySystem.startCrafting(params.recipeId, npcAlchemy, this.warehouse);
+        break;
+      }
       case 'mine_ore': {
         const { veinId } = params;
         result = this.miningSystem.mine(veinId, this.player);
