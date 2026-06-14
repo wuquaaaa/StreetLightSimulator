@@ -69,6 +69,13 @@ export class SalesSystem {
     this._generateCustomers();
 
     const traders = allCharacters.filter(c => !c.isRetired && c.hasPost('trader'));
+
+    // 贩子自动从仓库上架可售商品
+    if (traders.length > 0) {
+      this._autoStock(warehouse, logFn);
+    }
+
+    // 贩子自动销售
     for (const trader of traders) {
       this._autoSell(trader, warehouse, logFn, financeSystem);
     }
@@ -78,6 +85,32 @@ export class SalesSystem {
   }
 
   // ====== 内部方法 ======
+
+  /** 贩子自动从仓库上架可售商品 */
+  _autoStock(warehouse, logFn) {
+    // 可售商品列表：category → itemId
+    const sellableItems = [
+      { cat: 'food', itemId: 'wheat', name: '小麦' },
+      { cat: 'food', itemId: 'corn', name: '玉米' },
+      { cat: 'food', itemId: 'turnip', name: '萝卜' },
+      { cat: 'herb', itemId: 'spirit_grass', name: '灵草' },
+      { cat: 'mineral', itemId: 'iron_ore', name: '铁矿石' },
+      { cat: 'mineral', itemId: 'iron_ingot', name: '铁锭' },
+      { cat: 'herb', itemId: 'pill_heal', name: '治愈丹' },
+      { cat: 'herb', itemId: 'pill_buff', name: '增益丹' },
+    ];
+
+    for (const item of sellableItems) {
+      const warehouseAmt = warehouse.getItemAmount(item.cat, item.itemId);
+      const shopAmt = this.shopStock[item.itemId]?.amount || 0;
+      // 仓库有货且店铺不超过20单位时上架
+      if (warehouseAmt > 0 && shopAmt < 20) {
+        const toStock = Math.min(warehouseAmt, 5); // 每次上架最多5单位
+        warehouse.removeItem(item.cat, item.itemId, toStock);
+        this.stockItem(item.itemId, item.name, toStock, this.pricing[item.itemId] || 1);
+      }
+    }
+  }
 
   _generateCustomers() {
     this.dailyCustomers = [];
