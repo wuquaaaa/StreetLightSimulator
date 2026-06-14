@@ -291,17 +291,17 @@ function AlchemyTab({ game, onAction }) {
           <div className="text-xs text-stone-400 font-semibold mb-2">💊 丹药库存</div>
           <div className="grid grid-cols-2 gap-2">
             {Object.entries(output).map(([id, data]) => {
-              const recipe = PILL_RECIPES[id];
-              if (!recipe || data.amount <= 0) return null;
+              if (data.amount <= 0) return null;
+              const quality = data.quality || 'medium';
+              const qualityLabel = quality === 'poor' ? '残次' : quality === 'low' ? '下品' : quality === 'medium' ? '中品' : quality === 'high' ? '上品' : '极品';
+              const qualityColor = quality === 'poor' ? 'text-stone-400' : quality === 'low' ? 'text-green-400' : quality === 'medium' ? 'text-blue-400' : quality === 'high' ? 'text-yellow-400' : 'text-red-400';
               return (
                 <div key={id} className="flex items-center justify-between bg-stone-800/50 rounded px-2 py-1.5">
                   <div className="flex items-center gap-1.5">
-                    <span>{recipe.icon}</span>
+                    <span>{data.name?.includes('治愈') ? '💊' : data.name?.includes('增益') ? '🧪' : '🍀'}</span>
                     <div>
-                      <div className="text-xs text-stone-300">{recipe.name}</div>
-                      <div className={`text-[9px] ${QUALITY_COLORS[data.quality > 80 ? 'supreme' : data.quality > 60 ? 'high' : data.quality > 40 ? 'medium' : 'low']}`}>
-                        品质 {Math.round(data.quality)}
-                      </div>
+                      <div className="text-xs text-stone-300">{data.name || id}</div>
+                      <div className={`text-[9px] ${qualityColor}`}>{qualityLabel}</div>
                     </div>
                   </div>
                   <span className="text-xs text-amber-400">{data.amount}</span>

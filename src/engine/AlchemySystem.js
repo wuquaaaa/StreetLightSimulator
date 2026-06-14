@@ -60,12 +60,40 @@ export class AlchemySystem {
     const recipe = PILL_RECIPES[recipeId];
     if (!recipe) return { success: false, message: '未知配方' };
 
-    // 检查材料
+    // 检查并消耗材料（记录品质）
+    const ingredientQualities = [];
     for (const ing of recipe.ingredients) {
-      const have = warehouse.getItemAmount('herb', ing.id);
-      if (have < ing.amount) {
-        const preparedDef = PREPARED_HERBS[ing.id];
-        return { success: false, message: `${preparedDef?.name || ing.id}不足` };
+      // 优先消耗高质量材料
+      const qualities = ['supreme', 'premium', 'standard', 'inferior'];
+      let remaining = ing.amount;
+      const consumed = {};
+
+      for (const q of qualities) {
+        const batchId = `${ing.id}_${q}`;
+        const have = warehouse.getItemAmount('herb', batchId);
+        if (have <= 0) continue;
+        const take = Math.min(have, remaining);
+        warehouse.removeItem('herb', batchId, take);
+        consumed[q] = take;
+        remaining -= take;
+        // 记录品质
+        for (let i = 0; i < take; i++) {
+          ingredientQualities.push(q);
+        }
+        if (remaining <= 0) break;
+      }
+
+      // 不够则从普通批次取
+      if (remaining > 0) {
+        const have = warehouse.getItemAmount('herb', ing.id);
+        if (have < remaining) {
+          // 回退已消耗的材料（简化：不回退，直接失败）
+          return { success: false, message: `${ing.id}不足` };
+        }
+        warehouse.removeItem('herb', ing.id, remaining);
+        for (let i = 0; i < remaining; i++) {
+          ingredientQualities.push('standard');
+        }
       }
     }
 
@@ -74,17 +102,13 @@ export class AlchemySystem {
       return { success: false, message: '炉温太低，请先升温' };
     }
 
-    // 消耗材料
-    for (const ing of recipe.ingredients) {
-      warehouse.removeItem('herb', ing.id, ing.amount);
-    }
-
     const key = character.id;
     this.crafting[key] = {
       recipeId,
       progress: 0,
       total: recipe.craftTime,
       baseQuality: recipe.baseQuality,
+      ingredientQualities,
     };
 
     return { success: true, message: `开始炼制${recipe.name}` };
@@ -162,17 +186,19 @@ export class AlchemySystem {
     // 计算品质
     const quality = this._calculateQuality(craft, character);
 
-    // 产出
-    if (!this.outputBuffer[craft.recipeId]) {
-      this.outputBuffer[craft.recipeId] = { amount: 0, quality: 0 };
+    // 产出：存储为带品质的批次
+    const qualityLabel = quality === 'inferior' ? '劣' : quality === 'low' ? '下' : quality === 'medium' ? '中' : quality === 'high' ? '上' : '极';
+    const batchId = `${craft.recipeId}_${quality}`;
+    const batchName = `${recipe.name}(${qualityLabel}品)`;
+
+    if (!this.outputBuffer[batchId]) {
+      this.outputBuffer[batchId] = { amount: 0, quality, name: batchName };
     }
-    const buffer = this.outputBuffer[craft.recipeId];
-    buffer.amount += 1;
-    buffer.quality = (buffer.quality + quality) / 2;
+    this.outputBuffer[batchId].amount += 1;
   }
 
   _calculateQuality(craft, character) {
-    let qualityScore = 50; // 基础分
+    let qualityScore = 50;
 
     // 专注力
     const focus = character.baseAttributes?.focus || 50;
@@ -185,6 +211,13 @@ export class AlchemySystem {
     // 炉温匹配
     const tempMod = this._getTempModifier();
     qualityScore *= tempMod;
+
+    // 原料品质（核心：好材料出好丹）
+    if (craft.ingredientQualities && craft.ingredientQualities.length > 0) {
+      const qualityValues = { inferior: 10, standard: 50, premium: 80, supreme: 100 };
+      const avgIngredientQuality = craft.ingredientQualities.reduce((s, q) => s + (qualityValues[q] || 50), 0) / craft.ingredientQualities.length;
+      qualityScore = qualityScore * 0.4 + avgIngredientQuality * 0.6; // 原料占60%权重
+    }
 
     // 特质
     for (const trait of (character.traits || [])) {
