@@ -13,7 +13,7 @@ export const BUILDING_DEFS = [
   {
     id: 'mountain_trail',
     name: '探索后山',
-    icon: '🏔️',
+    icon: '\u26F0\uFE0F',
     description: '村子背后是一片绵延的山林。派几个胆大的村民进去探探路，说不定能发现些有用的东西。',
     category: 'production',
     costs: [
@@ -27,6 +27,106 @@ export const BUILDING_DEFS = [
       game.gatherSystem.unlock();
     },
     story: '你望着村后的山峦出神。老人们说山里有成片的松林和采不完的石料——只是路早被荒草吞没了。你点了几个壮实的村民，带上干粮和柴刀，决心重新踏出一条路来。',
+  },
+  {
+    id: 'mine',
+    name: '矿场',
+    icon: '\u26CF\uFE0F',
+    description: '在山脚发现了一处铁矿脉。搭建矿棚，开始开采。',
+    category: 'production',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 20 },
+      { category: 'material', itemId: 'stone', name: '石材', amount: 15 },
+    ],
+    buildDays: 3,
+    unique: true,
+    requires: (game) => game.unlockedJobs?.has('miner'),
+    onBuilt: (game) => {
+      // 解锁矿脉
+      if (game.miningSystem && !game.miningSystem.veins?.iron_vein) {
+        game.miningSystem.init();
+      }
+    },
+    story: '勘探后山的村民带回了好消息——山脚裸露着一层赭红色的矿石。你组织人手搭建矿棚，准备开采。',
+    lockedReason: '需要先解锁矿工岗位',
+  },
+  {
+    id: 'smelter_build',
+    name: '冶炼炉',
+    icon: '\uD83D\uDD25',
+    description: '建造一座土法冶炼炉，将铁矿石炼成铁锭。',
+    category: 'production',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 25 },
+      { category: 'material', itemId: 'stone', name: '石材', amount: 20 },
+      { category: 'mineral', itemId: 'iron_ore', name: '铁矿石', amount: 10 },
+    ],
+    buildDays: 4,
+    unique: true,
+    requires: (game) => game.buildings.includes('mine'),
+    onBuilt: (game) => {
+      if (game.repairSystem && !game.repairSystem.equipment?.smelting_furnace) {
+        game.repairSystem.init();
+      }
+    },
+    story: '矿石挖出来了，但得炼成铁锭才能用。你找了个老铁匠，按他的指点垒起一座土高炉。',
+    lockedReason: '需要先建造矿场',
+  },
+  {
+    id: 'herb_garden',
+    name: '药圃',
+    icon: '\uD83C\uDF3F',
+    description: '划出一片地专门种植草药，为炼丹做准备。',
+    category: 'production',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 15 },
+      { category: 'food', itemId: 'wheat', name: '小麦', amount: 10 },
+    ],
+    buildDays: 2,
+    unique: true,
+    requires: (game) => game.researchSystem?.unlocked,
+    onBuilt: (game) => {},
+    story: '有人生了病，你才意识到草药的重要性。你划出一块向阳的坡地，撒下药种。',
+    lockedReason: '需要先建造司务堂',
+  },
+  {
+    id: 'alchemy_room',
+    name: '丹房',
+    icon: '\u2697\uFE0F',
+    description: '建造一间专门的炼丹房，配备丹炉和药柜。',
+    category: 'production',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 30 },
+      { category: 'mineral', itemId: 'iron_ore', name: '铁矿石', amount: 15 },
+      { category: 'mineral', itemId: 'iron_ingot', name: '铁锭', amount: 5 },
+    ],
+    buildDays: 5,
+    unique: true,
+    requires: (game) => game.buildings.includes('herb_garden'),
+    onBuilt: (game) => {
+      if (game.repairSystem && !game.repairSystem.equipment?.alchemy_furnace) {
+        game.repairSystem.init();
+      }
+    },
+    story: '草药有了，但没有炼丹的地方。你请来一位云游道士，按他的图纸建了一间丹房。',
+    lockedReason: '需要先建造药圃',
+  },
+  {
+    id: 'shop',
+    name: '商铺',
+    icon: '\uD83C\uDFEA',
+    description: '搭建一间铺面，挂牌营业，开始做买卖。',
+    category: 'commercial',
+    costs: [
+      { category: 'material', itemId: 'lumber', name: '木材', amount: 20 },
+      { category: 'material', itemId: 'stone', name: '石材', amount: 10 },
+    ],
+    buildDays: 2,
+    unique: true,
+    requires: (game) => game.characters.length >= 2,
+    onBuilt: (game) => {},
+    story: '东西多了，光堆在仓库不是办法。你找了街口一间空屋，挂上招牌，开张营业。',
+    lockedReason: '需要至少2个村民',
   },
   // ====== 仓储类 ======
   {
