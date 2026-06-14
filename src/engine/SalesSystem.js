@@ -107,26 +107,58 @@ export class SalesSystem {
 
   /** 贩子自动从仓库上架可售商品 */
   _autoStock(warehouse, logFn) {
-    // 可售商品列表：category → itemId
     const sellableItems = [
-      { cat: 'food', itemId: 'wheat', name: '小麦' },
-      { cat: 'food', itemId: 'corn', name: '玉米' },
-      { cat: 'food', itemId: 'turnip', name: '萝卜' },
-      { cat: 'herb', itemId: 'spirit_grass', name: '灵草' },
-      { cat: 'mineral', itemId: 'iron_ore', name: '铁矿石' },
-      { cat: 'mineral', itemId: 'iron_ingot', name: '铁锭' },
-      { cat: 'herb', itemId: 'pill_heal', name: '治愈丹' },
-      { cat: 'herb', itemId: 'pill_buff', name: '增益丹' },
+      { cat: 'food', prefixes: ['wheat_', 'corn_', 'turnip_'], names: { wheat: '小麦', corn: '玉米', turnip: '萝卜' } },
+      { cat: 'herb', prefixes: ['spirit_grass_'], names: { spirit_grass: '灵草' } },
+      { cat: 'mineral', prefixes: ['iron_ore_'], names: { iron_ore: '铁矿石' } },
+      { cat: 'mineral', prefixes: ['iron_ingot_'], names: { iron_ingot: '铁锭' } },
+      { cat: 'herb', prefixes: ['pill_heal_'], names: { pill_heal: '治愈丹' } },
+      { cat: 'herb', prefixes: ['pill_buff_'], names: { pill_buff: '增益丹' } },
     ];
 
     for (const item of sellableItems) {
-      const warehouseAmt = warehouse.getItemAmount(item.cat, item.itemId);
-      const shopAmt = this.shopStock[item.itemId]?.amount || 0;
-      // 仓库有货且店铺不超过20单位时上架
-      if (warehouseAmt > 0 && shopAmt < 20) {
-        const toStock = Math.min(warehouseAmt, 5); // 每次上架最多5单位
-        warehouse.removeItem(item.cat, item.itemId, toStock);
-        this.stockItem(item.itemId, item.name, toStock, this.pricing[item.itemId] || 1);
+      for (const prefix of item.prefixes) {
+        // 扫描仓库中该前缀的所有品质批次
+        const storage = warehouse.storage[item.cat];
+        if (storage && storage.shelves) {
+          for (const shelf of storage.shelves) {
+            for (const [shelfItemId, shelfItem] of Object.entries(shelf.items)) {
+              if (!shelfItemId.startsWith(prefix) || shelfItem.amount <= 0) continue;
+              const shopAmt = this.shopStock[shelfItemId]?.amount || 0;
+              if (shopAmt >= 20) continue;
+
+              const baseId = shelfItemId.replace(/_(inferior|standard|premium|supreme)$/, '');
+              const quality = shelfItemId.match(/_(inferior|standard|premium|supreme)$/)?.[1] || null;
+              const displayName = item.names[baseId] || baseId;
+              const qualityLabel = quality ? `(${quality === 'inferior' ? '劣' : quality === 'standard' ? '良' : quality === 'premium' ? '优' : '极品'})` : '';
+
+              const toStock = Math.min(shelfItem.amount, 5);
+              shelfItem.amount -= toStock;
+              if (shelfItem.amount <= 0) delete shelf.items[shelfItemId];
+
+              this.stockItem(shelfItemId, `${displayName}${qualityLabel}`, toStock, this.pricing[baseId] || 1, quality);
+            }
+          }
+        }
+        // 也检查公共仓库
+        for (const shelf of warehouse.common.shelves) {
+          for (const [shelfItemId, shelfItem] of Object.entries(shelf.items)) {
+            if (!shelfItemId.startsWith(prefix) || shelfItem.amount <= 0) continue;
+            const shopAmt = this.shopStock[shelfItemId]?.amount || 0;
+            if (shopAmt >= 20) continue;
+
+            const baseId = shelfItemId.replace(/_(inferior|standard|premium|supreme)$/, '');
+            const quality = shelfItemId.match(/_(inferior|standard|premium|supreme)$/)?.[1] || null;
+            const displayName = item.names[baseId] || baseId;
+            const qualityLabel = quality ? `(${quality === 'inferior' ? '劣' : quality === 'standard' ? '良' : quality === 'premium' ? '优' : '极品'})` : '';
+
+            const toStock = Math.min(shelfItem.amount, 5);
+            shelfItem.amount -= toStock;
+            if (shelfItem.amount <= 0) delete shelf.items[shelfItemId];
+
+            this.stockItem(shelfItemId, `${displayName}${qualityLabel}`, toStock, this.pricing[baseId] || 1, quality);
+          }
+        }
       }
     }
   }

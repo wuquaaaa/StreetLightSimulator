@@ -16,6 +16,7 @@
  */
 
 import { CROPS, HERB_QUALITY } from '../data/crops';
+import { NORMAL_QUALITY_WEIGHTS, SPIRIT_QUALITY_WEIGHTS, rollQuality, getModifiedWeights } from '../data/productQuality';
 import {
   TICKS_PER_DAY,
   FERTILITY_BASE, FERTILITY_INITIAL_MIN, FERTILITY_INITIAL_RANGE, FERTILITY_DRAIN_RATE,
@@ -536,11 +537,32 @@ export class FarmSystem {
       seedBack = Math.random() < 0.3 ? 2 : 1;
     }
 
-    // 灵草品质计算（含特质联动加成）
-    let herbQuality = null;
+    // 品质生成：将总产量按品质分批
+    const focus = character.baseAttributes?.focus || 50;
+    const baseWeights = crop.isHerb ? null : (plot.isSpiritPlot() ? SPIRIT_QUALITY_WEIGHTS : NORMAL_QUALITY_WEIGHTS);
+    const qualityBatches = [];
+
     if (crop.isHerb) {
+      // 灵草：已有品质系统
       const herbQualityBonus = character.getSynergyHerbQualityBonus?.() || 0;
       herbQuality = plot.calculateHerbQuality(herbQualityBonus);
+      qualityBatches.push({ quality: herbQuality, amount: totalYield });
+    } else {
+      // 食物作物：按品质分批
+      const weights = getModifiedWeights(baseWeights, focus);
+      for (let i = 0; i < totalYield; i++) {
+        const q = rollQuality(weights);
+        qualityBatches.push({ quality: q, amount: 1 });
+      }
+      // 合并同品质
+      const merged = {};
+      for (const b of qualityBatches) {
+        merged[b.quality] = (merged[b.quality] || 0) + b.amount;
+      }
+      qualityBatches.length = 0;
+      for (const [q, amt] of Object.entries(merged)) {
+        if (amt > 0) qualityBatches.push({ quality: q, amount: amt });
+      }
     }
 
     const yieldPct = Math.round((yieldMod - 1) * 100);
@@ -570,7 +592,13 @@ export class FarmSystem {
       const qDef = HERB_QUALITY[herbQuality];
       message += `【${qDef.label}】`;
     }
-    // 灵田产量加成提示
+    if (!crop.isHerb && qualityBatches.length > 0) {
+      const qualitySummary = qualityBatches.map(b => {
+        const label = b.quality === 'inferior' ? '劣' : b.quality === 'standard' ? '良' : b.quality === 'premium' ? '优' : '极品';
+        return `${label}×${b.amount}`;
+      }).join(' ');
+      message += ` [${qualitySummary}]`;
+    }
     if (crop.isHerb && plot.isSpiritPlot()) {
       const levelBonus = plot.getLevelBonus().herbYieldBonus;
       if (levelBonus > 0) {
@@ -587,24 +615,37 @@ export class FarmSystem {
           overflowWarnings.push(`仓库满了！${seedResult.overflow}颗${crop.seedName}丢失`);
         }
       }
-      const storeResult = warehouse.addItem(
-        crop.category,
-        crop.harvestItem,
-        crop.name,
-        totalYield,
-        herbQuality ? { quality: herbQuality } : undefined
-      );
-      if (storeResult.overflow > 0) {
-        overflowWarnings.push(`仓库满了！${storeResult.overflow}单位${crop.name}丢失`);
+      // 按品质批次存储
+      for (const batch of qualityBatches) {
+        const batchId = `${crop.harvestItem}_${batch.quality}`;
+        const batchName = `${crop.name}(${batch.quality === 'inferior' ? '劣' : batch.quality === 'standard' ? '良' : batch.quality === 'premium' ? '优' : '极品'})`;
+        const storeResult = warehouse.addItem(
+          crop.category,
+          batchId,
+          batchName,
+          batch.amount,
+          { quality: batch.quality, inspected: false }
+        );
+        if (storeResult.overflow > 0) {
+          overflowWarnings.push(`仓库满了！${storeResult.overflow}单位${batchName}丢失`);
+        }
       }
     }
+
+    // 品质摘要
+    const qualitySummary = qualityBatches.map(b => {
+      const label = b.quality === 'inferior' ? '劣' : b.quality === 'standard' ? '良' : b.quality === 'premium' ? '优' : '极品';
+      return `${label}×${b.amount}`;
+    }).join(' ');
 
     return {
       success: true, message, isHighQuality,
       herbQuality,
+      qualityBatches,
       yield: { itemId: crop.harvestItem, category: crop.category, amount: totalYield, name: crop.name },
       seedBack: { itemId: crop.seedId, amount: seedBack, name: crop.seedName },
       overflowWarnings,
+      qualitySummary,
     };
   }
 
