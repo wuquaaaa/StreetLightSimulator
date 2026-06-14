@@ -16,19 +16,35 @@ export class SalesSystem {
     this.salesHistory = [];
     this.shopStock = {};
     this.pricing = {
-      // 食物类：1石≈1两（明朝参考）
       wheat: 1.0, corn: 1.5, turnip: 0.8,
-      // 灵草类：稀缺品，溢价
       spirit_grass: 3.0, blood_lotus: 5.0, frost_flower: 4.0, sky_root: 10.0,
-      // 仙草类：极稀缺
       moonvine: 15.0, firelotus: 20.0, voidmoss: 25.0, heavenfruit: 50.0, dragonblood_grass: 40.0,
-      // 矿石/金属
       iron_ore: 1.5, copper_ore: 1.0, coal: 0.5,
       iron_ingot: 5.0, copper_ingot: 3.0, spirit_stone: 15.0,
-      // 丹药
       pill_heal: 8.0, pill_buff: 12.0, pill_fortune: 25.0,
     };
+    // 竞品商店
+    this.competitors = this._generateCompetitors();
     this.dailyStats = {};
+  }
+
+  _generateCompetitors() {
+    return [
+      { name: '老王杂货铺', priceMod: 1.0, stock: { wheat: 15, corn: 10, turnip: 8 } },
+      { name: '张记药铺', priceMod: 0.9, stock: { pill_heal: 5, spirit_grass: 3 } },
+      { name: '李氏铁器', priceMod: 1.1, stock: { iron_ore: 10, iron_ingot: 3 } },
+    ];
+  }
+
+  /** 获取竞品价格 */
+  getCompetitorPrices(itemId) {
+    return this.competitors
+      .filter(c => c.stock[itemId] > 0)
+      .map(c => ({
+        name: c.name,
+        price: Math.round((this.pricing[itemId] || 1) * c.priceMod * 100) / 100,
+        stock: c.stock[itemId],
+      }));
   }
 
   // ====== 玩家操作 ======
@@ -165,11 +181,20 @@ export class SalesSystem {
 
       const price = this.pricing[customer.wantItem] || stock.price;
 
+      // 竞品影响：如果有更便宜的竞品，顾客可能不买
+      const competitors = this.getCompetitorPrices(customer.wantItem);
+      if (competitors.length > 0) {
+        const cheapest = Math.min(...competitors.map(c => c.price));
+        if (price > cheapest * 1.2) {
+          // 我们的价格比最便宜的竞品贵20%以上，顾客去别家
+          continue;
+        }
+      }
+
       if (price <= customer.budget) {
         stock.amount -= 1;
         customer.wantItem = null;
 
-        // 银两进国库
         if (financeSystem) {
           financeSystem.treasury += price;
         }
@@ -182,7 +207,7 @@ export class SalesSystem {
           day: Date.now(),
         });
 
-        logFn(`${trader.name}卖出了${customer.wantItemName}，获得${price.toFixed(2)}银两`);
+        logFn(`${trader.name}卖出了${customer.wantItemName}，获得${price.toFixed(2)}两`);
       }
     }
   }

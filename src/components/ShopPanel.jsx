@@ -59,30 +59,46 @@ function TraderTab({ game, onAction }) {
         </div>
       </div>
 
-      {/* 上架商品 */}
+      {/* 上架商品 + 竞品价格 */}
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
         <div className="text-xs text-stone-400 font-semibold mb-2">📦 上架管理</div>
-        {/* 当前货架 */}
         {Object.keys(sales.shopStock).length > 0 ? (
           <div className="space-y-1.5 mb-3">
-            {Object.entries(sales.shopStock).map(([id, stock]) => (
-              <div key={id} className="flex items-center justify-between bg-stone-800/50 rounded px-2 py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-stone-300">{stock.name}</span>
-                  <span className="text-[10px] text-stone-500">×{stock.amount}</span>
+            {Object.entries(sales.shopStock).map(([id, stock]) => {
+              const myPrice = sales.pricing[id] || stock.price;
+              const competitors = sales.getCompetitorPrices?.(id) || [];
+              return (
+                <div key={id} className="bg-stone-800/50 rounded px-2 py-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-stone-300">{stock.name}</span>
+                      <span className="text-[10px] text-stone-500">×{stock.amount}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-stone-500">定价:</span>
+                      <input
+                        type="number"
+                        value={myPrice}
+                        onChange={(e) => onAction('set_item_price', { itemId: id, price: parseFloat(e.target.value) || 1 })}
+                        className="w-14 bg-stone-700 text-xs text-amber-400 px-1.5 py-0.5 rounded text-center outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                      <span className="text-[10px] text-stone-600">两</span>
+                    </div>
+                  </div>
+                  {competitors.length > 0 && (
+                    <div className="flex gap-2 mt-1 text-[9px]">
+                      {competitors.map((c, i) => (
+                        <span key={i} className={`px-1.5 py-0.5 rounded ${
+                          myPrice > c.price ? 'bg-red-900/30 text-red-400' : 'bg-green-900/30 text-green-400'
+                        }`}>
+                          {c.name}: {c.price.toFixed(2)}两
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-stone-500">定价:</span>
-                  <input
-                    type="number"
-                    value={sales.pricing[id] || stock.price}
-                    onChange={(e) => onAction('set_item_price', { itemId: id, price: parseInt(e.target.value) || 1 })}
-                    className="w-14 bg-stone-700 text-xs text-amber-400 px-1.5 py-0.5 rounded text-center outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                  <span className="text-[10px] text-stone-600">银两</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center text-stone-600 text-xs py-2 mb-2">货架空空如也</div>
