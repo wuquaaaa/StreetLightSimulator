@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Flame, Pickaxe, Wrench, Plus, Minus, AlertTriangle, CheckCircle, Clock, Thermometer, Fuel, Hammer } from 'lucide-react';
 import { ORE_VEINS, RAW_ORES, SMELTED_PRODUCTS, TOOLS } from '../data/materials';
 import { FURNACE_EQUIPMENT } from '../engine/RepairSystem';
+import { QUALITY_TIERS } from '../data/productQuality';
 
 // ========== 矿脉卡片 ==========
 function VeinCard({ veinId, veinData, veinDef, onMine, onRepairTool, toolDurability }) {
@@ -77,11 +78,34 @@ function VeinCard({ veinId, veinData, veinDef, onMine, onRepairTool, toolDurabil
 // ========== 矿场Tab ==========
 function MiningTab({ game, onAction }) {
   const mining = game.miningSystem;
+  const warehouse = game.warehouse;
   const toolDur = mining.toolDurability?.pickaxe || 0;
+  const [miningLog, setMiningLog] = useState([]);
 
   const handleMine = (veinId) => {
-    onAction('mine_ore', { veinId });
+    const result = onAction('mine_ore', { veinId });
+    if (result?.success && result?.qualitySummary) {
+      setMiningLog(prev => [`开采 ${result.qualitySummary}`, ...prev].slice(0, 10));
+    }
+    if (result?.accident) {
+      setMiningLog(prev => [`⚠️ ${result.accident.name}！`, ...prev].slice(0, 10));
+    }
   };
+
+  // 统计仓库中的矿石库存（按品质）
+  const oreStock = {};
+  for (const [id, def] of Object.entries(RAW_ORES)) {
+    const qualities = ['inferior', 'standard', 'premium', 'supreme'];
+    for (const q of qualities) {
+      const batchId = `${id}_${q}`;
+      const amt = warehouse.getItemAmount(def.category, batchId);
+      if (amt > 0) {
+        if (!oreStock[id]) oreStock[id] = { name: def.name, icon: def.icon, total: 0, qualities: {} };
+        oreStock[id].qualities[q] = amt;
+        oreStock[id].total += amt;
+      }
+    }
+  }
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
@@ -90,7 +114,8 @@ function MiningTab({ game, onAction }) {
         <h3 className="text-sm font-bold text-stone-300">矿场开采</h3>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* 矿脉 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         {Object.entries(ORE_VEINS).map(([id, def]) => {
           const data = mining.veins?.[id] || { durability: def.maxDurability, depleted: false };
           return (
@@ -106,6 +131,48 @@ function MiningTab({ game, onAction }) {
           );
         })}
       </div>
+
+      {/* 开采日志 */}
+      {miningLog.length > 0 && (
+        <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
+          <div className="text-xs text-stone-400 font-semibold mb-2">📋 开采记录</div>
+          <div className="space-y-0.5">
+            {miningLog.map((log, i) => (
+              <div key={i} className="text-[10px] text-stone-500">{log}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 矿石库存（按品质） */}
+      {Object.keys(oreStock).length > 0 && (
+        <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
+          <div className="text-xs text-stone-400 font-semibold mb-2">🪨 矿石库存</div>
+          <div className="space-y-1.5">
+            {Object.entries(oreStock).map(([id, ore]) => (
+              <div key={id} className="bg-stone-800/50 rounded px-2 py-1.5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span>{ore.icon}</span>
+                    <span className="text-xs text-stone-300">{ore.name}</span>
+                  </div>
+                  <span className="text-xs text-amber-400">共 {ore.total}</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {Object.entries(ore.qualities).map(([q, amt]) => {
+                    const tier = QUALITY_TIERS[q];
+                    return (
+                      <span key={q} className={`text-[9px] px-1.5 py-0.5 rounded ${tier?.color || 'text-stone-400'} bg-stone-700/50`}>
+                        {tier?.icon} {tier?.name} ×{amt}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
