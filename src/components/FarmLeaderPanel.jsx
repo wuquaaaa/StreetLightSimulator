@@ -592,6 +592,38 @@ function WorkerWelfareTab({ game, onAction }) {
           {farmers.length === 0 && <div className="text-center text-stone-600 text-xs py-3">暂无工人</div>}
         </div>
       </div>
+
+      {/* 罢工状态 */}
+      {workerSys?.strikeActive && (
+        <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-3 mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">{'\u26A0\uFE0F'}</span>
+            <span className="text-sm text-red-400 font-bold">工人罢工中！</span>
+          </div>
+          <div className="text-xs text-red-300">所有自动生产已暂停。提高待遇或等待工人平息怒火。</div>
+        </div>
+      )}
+
+      {/* 联名上书 */}
+      {workerSys?.grievances?.filter(g => !g.resolved).length > 0 && (
+        <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-3 mt-4">
+          <div className="text-xs text-amber-400 font-semibold mb-2">{'\uD83D\uDCDD'} 工人诉求</div>
+          {workerSys.grievances.filter(g => !g.resolved).map((g, i) => (
+            <div key={i} className="flex items-center justify-between bg-stone-900/30 rounded p-2 mb-1">
+              <div>
+                <div className="text-[10px] text-stone-300">{g.npcIds.length}人联名</div>
+                <div className="text-[10px] text-stone-500">要求: {g.demands.join(', ')}</div>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => onAction('respond_grievance', { index: workerSys.grievances.indexOf(g), response: 'accept' })}
+                  className="px-2 py-1 text-[10px] bg-green-800/60 text-green-300 rounded">同意</button>
+                <button onClick={() => onAction('respond_grievance', { index: workerSys.grievances.indexOf(g), response: 'reject' })}
+                  className="px-2 py-1 text-[10px] bg-red-800/60 text-red-300 rounded">拒绝</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

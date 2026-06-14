@@ -388,8 +388,18 @@ export class GameState {
     // 运输
     this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.salesSystem);
 
+    // 罢工检查：罢工时跳过自动劳作
+    if (this.workerSystem.strikeActive) {
+      return; // 罢工中，所有自动生产暂停
+    }
+
     // 工人权益
     this.workerSystem.tick(isNewDay, this.characters, this.financeSystem, (msg) => this.addLog(msg));
+
+    // 罢工时跳过NPC自动劳作
+    if (this.workerSystem.strikeActive) {
+      return;
+    }
 
     // 仙法修炼
     this.cultivationSystem.tick(isNewDay, [this.player, ...this.characters], this.warehouse, (msg) => this.addLog(msg));
@@ -641,6 +651,10 @@ export class GameState {
         }
         this.financeSystem.setWageSettings(postId, settings);
         result = { success: true, message: `${postId}岗位工资设置已更新` };
+        break;
+      }
+      case 'respond_grievance': {
+        result = this.workerSystem.respondToGrievance(params.index, params.response, this.financeSystem, (msg) => this.addLog(msg));
         break;
       }
       case 'switch_job': {
