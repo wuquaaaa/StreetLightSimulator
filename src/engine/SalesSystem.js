@@ -9,6 +9,8 @@
  * - 竞品影响：价格太高客人去别家
  */
 
+import { QUALITY_TIERS } from '../data/productQuality';
+
 export class SalesSystem {
   constructor() {
     this.reputation = 50;
@@ -57,11 +59,12 @@ export class SalesSystem {
   }
 
   /** 上架商品 */
-  stockItem(itemId, name, amount, defaultPrice = 10) {
+  stockItem(itemId, name, amount, defaultPrice = 10, quality = null) {
     if (!this.shopStock[itemId]) {
-      this.shopStock[itemId] = { amount: 0, price: defaultPrice, name };
+      this.shopStock[itemId] = { amount: 0, price: defaultPrice, name, batchQuality: quality };
     }
     this.shopStock[itemId].amount += amount;
+    if (quality) this.shopStock[itemId].batchQuality = quality;
     if (!this.pricing[itemId]) {
       this.pricing[itemId] = defaultPrice;
     }
@@ -179,35 +182,47 @@ export class SalesSystem {
       const stock = this.shopStock[customer.wantItem];
       if (!stock || stock.amount <= 0) continue;
 
-      const price = this.pricing[customer.wantItem] || stock.price;
+      const basePrice = this.pricing[customer.wantItem] || stock.price;
 
-      // 竞品影响：如果有更便宜的竞品，顾客可能不买
+      // 竞品影响
       const competitors = this.getCompetitorPrices(customer.wantItem);
       if (competitors.length > 0) {
         const cheapest = Math.min(...competitors.map(c => c.price));
-        if (price > cheapest * 1.2) {
-          // 我们的价格比最便宜的竞品贵20%以上，顾客去别家
-          continue;
-        }
+        if (basePrice > cheapest * 1.2) continue;
       }
 
-      if (price <= customer.budget) {
+      if (basePrice <= customer.budget) {
         stock.amount -= 1;
+
+        // 品质决定实际售价和声誉影响
+        let actualPrice = basePrice;
+        let repChange = 1; // 正常卖：声望+1
+
+        if (stock.batchQuality) {
+          const tier = QUALITY_TIERS[stock.batchQuality];
+          actualPrice = basePrice * tier.priceMod;
+          if (tier.reputationPenalty < 0) {
+            repChange = tier.reputationPenalty; // 扣声誉
+          }
+        }
+
         customer.wantItem = null;
 
         if (financeSystem) {
-          financeSystem.treasury += price;
+          financeSystem.treasury += actualPrice;
         }
 
-        this.reputation = Math.min(100, this.reputation + 1);
+        this.reputation = Math.max(0, Math.min(100, this.reputation + repChange));
 
         this.salesHistory.push({
           itemId: customer.wantItem,
-          price,
+          price: actualPrice,
+          quality: stock.batchQuality || 'unknown',
           day: Date.now(),
         });
 
-        logFn(`${trader.name}卖出了${customer.wantItemName}，获得${price.toFixed(2)}两`);
+        const qualityLabel = stock.batchQuality ? `(${QUALITY_TIERS[stock.batchQuality]?.name || '未知'})` : '';
+        logFn(`${trader.name}卖出了${customer.wantItemName}${qualityLabel}，获得${actualPrice.toFixed(2)}两`);
       }
     }
   }
@@ -219,20 +234,29 @@ export class SalesSystem {
     }
 
     const listPrice = this.pricing[customer.wantItem] || stock.price;
-
-    // 顾客心理价位
     const maxAccept = Math.floor(listPrice * (0.6 + Math.random() * 0.3));
 
     if (offerPrice <= customer.budget && offerPrice >= maxAccept) {
-      // 议价成功
       stock.amount -= 1;
-      this.reputation = Math.min(100, this.reputation + 2);
+
+      // 品质检查
+      let repChange = 2;
+      let actualPrice = offerPrice;
+      if (stock.batchQuality) {
+        const tier = QUALITY_TIERS[stock.batchQuality];
+        if (tier.reputationPenalty < 0) {
+          repChange = tier.reputationPenalty;
+        }
+      }
+
+      this.reputation = Math.max(0, Math.min(100, this.reputation + repChange));
 
       return {
         success: true,
         sold: true,
-        price: offerPrice,
-        message: `${customer.name}同意以${offerPrice}银两购买`,
+        price: actualPrice,
+        quality: stock.batchQuality,
+        message: `${customer.name}同意以${actualPrice.toFixed(2)}两购买`,
       };
     } else if (offerPrice > customer.budget) {
       return { success: false, sold: false, message: `${customer.name}出不起这个价` };

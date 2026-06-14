@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Store, Package, TrendingUp, Users, MapPin, AlertTriangle, CheckCircle, XCircle, ArrowRight } from 'lucide-react';
 import { TRANSPORT_ROUTES } from '../engine/TransportSystem';
+import { QUALITY_TIERS } from '../data/productQuality';
 
 const TIER_LABELS = {
   poor: { label: '穷人', icon: '👤', color: 'text-stone-400' },
@@ -67,12 +68,23 @@ function TraderTab({ game, onAction }) {
             {Object.entries(sales.shopStock).map(([id, stock]) => {
               const myPrice = sales.pricing[id] || stock.price;
               const competitors = sales.getCompetitorPrices?.(id) || [];
+              const qualityTier = stock.batchQuality ? QUALITY_TIERS[stock.batchQuality] : null;
               return (
                 <div key={id} className="bg-stone-800/50 rounded px-2 py-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-stone-300">{stock.name}</span>
                       <span className="text-[10px] text-stone-500">×{stock.amount}</span>
+                      {qualityTier && (
+                        <span className={`text-[9px] px-1 py-0.5 rounded ${qualityTier.color} bg-stone-700/50`}>
+                          {qualityTier.icon} {qualityTier.name}
+                        </span>
+                      )}
+                      {!stock.batchQuality && (
+                        <span className="text-[9px] px-1 py-0.5 rounded text-stone-600 bg-stone-700/30">
+                          未检测
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-stone-500">定价:</span>
