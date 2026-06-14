@@ -244,7 +244,8 @@ function PorterTab({ game, onAction }) {
       <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
         <div className="text-xs text-stone-400 font-semibold mb-2">🗺️ 运输路线</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {Object.entries(TRANSPORT_ROUTES).map(([id, route]) => {
+          {transport.getUnlockedRoutes?.(game.buildings || []).map(route => {
+            const id = route.id;
             const activeTrip = Object.values(transport.activeTrips || {}).find(t => t.routeId === id);
             const progress = activeTrip ? Math.round((activeTrip.progress / activeTrip.total) * 100) : 0;
 

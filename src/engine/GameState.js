@@ -376,7 +376,7 @@ export class GameState {
     this.salesSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.financeSystem);
 
     // 运输
-    this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg));
+    this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.salesSystem);
 
     // 工人权益
     this.workerSystem.tick(isNewDay, this.characters, this.financeSystem, (msg) => this.addLog(msg));
