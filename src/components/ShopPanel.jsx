@@ -327,21 +327,124 @@ function PorterTab({ game, onAction }) {
   );
 }
 
+// ========== 质检Tab ==========
+function InspectorTab({ game, onAction }) {
+  const inspector = game.inspectorSystem;
+  const warehouse = game.warehouse;
+
+  // 扫描仓库中未检测的商品
+  const uninspected = [];
+  const categories = Object.keys(warehouse.storage || {});
+  categories.push('common');
+  for (const cat of categories) {
+    const shelves = cat === 'common'
+      ? (warehouse.common?.shelves || [])
+      : (warehouse.storage[cat]?.shelves || []);
+    for (const shelf of shelves) {
+      for (const [itemId, item] of Object.entries(shelf.items)) {
+        if (!item.meta || item.meta.inspected || item.amount <= 0) continue;
+        if (!itemId.match(/_(inferior|standard|premium|supreme)$/)) continue;
+        const baseName = itemId.replace(/_(inferior|standard|premium|supreme)$/, '');
+        uninspected.push({ itemId, baseName, amount: item.amount, shelfId: shelf.id });
+      }
+    }
+  }
+
+  // 已检测的商品
+  const inspected = [];
+  for (const cat of categories) {
+    const shelves = cat === 'common'
+      ? (warehouse.common?.shelves || [])
+      : (warehouse.storage[cat]?.shelves || []);
+    for (const shelf of shelves) {
+      for (const [itemId, item] of Object.entries(shelf.items)) {
+        if (!item.meta?.inspected || item.amount <= 0) continue;
+        if (!itemId.match(/_(inferior|standard|premium|supreme)$/)) continue;
+        const quality = item.meta.reportedQuality || item.meta.quality || 'unknown';
+        const tier = QUALITY_TIERS[quality];
+        const baseName = itemId.replace(/_(inferior|standard|premium|supreme)$/, '');
+        inspected.push({ itemId, baseName, amount: item.amount, quality, tier });
+      }
+    }
+  }
+
+  const handleInspect = () => {
+    onAction('inspect_batch', {});
+  };
+
+  return (
+    <div className="rounded-lg border border-stone-700 bg-stone-800/50 p-4">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-lg">{'\uD83D\uDD0D'}</span>
+        <h3 className="text-sm font-bold text-stone-300">质检管理</h3>
+      </div>
+
+      {/* 未检测商品 */}
+      <div className="bg-stone-900/50 rounded-lg p-3 mb-4 border border-stone-700/30">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-stone-400 font-semibold">{'\u2753'} 未检测商品 ({uninspected.length})</div>
+          {uninspected.length > 0 && (
+            <button onClick={handleInspect}
+              className="px-2 py-1 text-[10px] bg-cyan-700/60 hover:bg-cyan-600/60 text-cyan-200 rounded transition-colors">
+              开始检测
+            </button>
+          )}
+        </div>
+        {uninspected.length === 0 ? (
+          <div className="text-center text-stone-600 text-xs py-3">所有商品已检测</div>
+        ) : (
+          <div className="space-y-1">
+            {uninspected.map((item, i) => (
+              <div key={i} className="flex items-center justify-between bg-stone-800/50 rounded px-2 py-1 text-xs">
+                <span className="text-stone-300">{item.baseName} x{item.amount}</span>
+                <span className="text-[10px] text-stone-600">品质未知</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 已检测商品 */}
+      <div className="bg-stone-900/50 rounded-lg p-3 border border-stone-700/30">
+        <div className="text-xs text-stone-400 font-semibold mb-2">{'\u2705'} 已检测商品 ({inspected.length})</div>
+        {inspected.length === 0 ? (
+          <div className="text-center text-stone-600 text-xs py-3">暂无已检测商品</div>
+        ) : (
+          <div className="space-y-1">
+            {inspected.map((item, i) => (
+              <div key={i} className="flex items-center justify-between bg-stone-800/50 rounded px-2 py-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-stone-300">{item.baseName}</span>
+                  <span className="text-[10px] text-stone-500">x{item.amount}</span>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.tier?.color || 'text-stone-400'} bg-stone-700/50`}>
+                  {item.tier?.icon || '?'} {item.tier?.name || '未知'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ========== 主面板 ==========
 export default function ShopPanel({ game, onAction }) {
   const [activeTab, setActiveTab] = useState('trader');
 
   const tabs = [
-    { id: 'trader', label: '贩子', icon: '💰' },
-    { id: 'porter', label: '运工', icon: '📦' },
+    { id: 'trader', label: '贩子', icon: '\uD83D\uDCB0' },
+    { id: 'porter', label: '运工', icon: '\uD83D\uDCE6' },
+    { id: 'inspector', label: '质检', icon: '\uD83D\uDD0D' },
   ];
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <span className="text-xl">🏪</span>
+        <span className="text-xl">\uD83C\uDFEA</span>
         <h2 className="text-lg font-bold text-amber-400">商铺</h2>
-        <span className="text-xs text-stone-500">（贩子/运工）</span>
+        <span className="text-xs text-stone-500">（贩子/运工/质检）</span>
       </div>
 
       <div className="flex gap-1 mb-4 bg-stone-900/50 rounded-lg p-1">
@@ -363,6 +466,7 @@ export default function ShopPanel({ game, onAction }) {
 
       {activeTab === 'trader' && <TraderTab game={game} onAction={onAction} />}
       {activeTab === 'porter' && <PorterTab game={game} onAction={onAction} />}
+      {activeTab === 'inspector' && <InspectorTab game={game} onAction={onAction} />}
     </div>
   );
 }

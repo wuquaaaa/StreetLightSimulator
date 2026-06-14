@@ -94,7 +94,7 @@ export const POSTS = {
   porter: {
     id: 'porter',
     name: '运工',
-    icon: '📦',
+    icon: '\uD83D\uDCE6',
     description: '搬运物资，装卸货物',
     energyCost: 1.0,
     exclusive: true,
@@ -102,6 +102,18 @@ export const POSTS = {
     phase: 1,
     requires: [],
     researchCost: 3,
+  },
+  inspector: {
+    id: 'inspector',
+    name: '质检员',
+    icon: '\uD83D\uDD0D',
+    description: '检测仓库商品品质，让玩家知道卖的是什么',
+    energyCost: 1.0,
+    exclusive: true,
+    category: 'quality',
+    phase: 1,
+    requires: [],
+    researchCost: 5,
   },
 
   // ====== 管理岗位（阶段二） ======

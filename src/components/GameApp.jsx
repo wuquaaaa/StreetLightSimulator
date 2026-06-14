@@ -205,18 +205,18 @@ export default function GameApp() {
 
   // 岗位定义
   const JOB_META = {
-    farmer:          { label: '农夫',   icon: '🌾', color: 'green' },
-    miner:           { label: '矿工',   icon: '⛏️', color: 'amber' },
-    smelter:         { label: '炼铁匠', icon: '🔥', color: 'orange' },
-    herb_prepper:    { label: '药童',   icon: '🌿', color: 'emerald' },
-    alchemist:       { label: '炼丹师', icon: '⚗️', color: 'purple' },
-    furnace_tender:  { label: '炉工',   icon: '🛠️', color: 'blue' },
-    trader:          { label: '贩子',   icon: '💰', color: 'yellow' },
-    porter:          { label: '运工',   icon: '📦', color: 'stone' },
+    farmer:          { label: '\u519C\u592B',   icon: '\uD83C\uDF3E', color: 'green' },
+    miner:           { label: '\u77FF\u5DE5',   icon: '\u26CF\uFE0F', color: 'amber' },
+    smelter:         { label: '\u70BC\u94C1\u5320', icon: '\uD83D\uDD25', color: 'orange' },
+    herb_prepper:    { label: '\u836F\u7AE5',   icon: '\uD83C\uDF3F', color: 'emerald' },
+    alchemist:       { label: '\u70BC\u4E39\u5E08', icon: '\u2697\uFE0F', color: 'purple' },
+    furnace_tender:  { label: '\u7089\u5DE5',   icon: '\uD83D\uDEE0\uFE0F', color: 'blue' },
+    trader:          { label: '\u8D29\u5B50',   icon: '\uD83D\uDCB0', color: 'yellow' },
+    porter:          { label: '\u8FD0\u5DE5',   icon: '\uD83D\uDCE6', color: 'stone' },
+    inspector:       { label: '\u8D28\u68C0\u5458', icon: '\uD83D\uDD0D', color: 'cyan' },
   };
 
-  // 已解锁的岗位列表（有序）
-  const jobOrder = ['farmer', 'miner', 'smelter', 'furnace_tender', 'herb_prepper', 'alchemist', 'trader', 'porter'];
+  const jobOrder = ['farmer', 'miner', 'smelter', 'furnace_tender', 'herb_prepper', 'alchemist', 'trader', 'porter', 'inspector'];
   const unlockedJobList = jobOrder.filter(j => game.unlockedJobs?.has(j));
   const currentJob = game.currentJob || 'farmer';
 
@@ -250,6 +250,7 @@ export default function GameApp() {
         return <HerbAlchemyPanel game={game} onAction={handleAction} />;
       case 'trader':
       case 'porter':
+      case 'inspector':
         return <ShopPanel game={game} onAction={handleAction} />;
       default:
         return <FarmPanel game={game} onAction={handleAction} />;

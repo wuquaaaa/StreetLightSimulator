@@ -18,6 +18,7 @@ const JOB_AFFINITY_WEIGHTS = {
   furnace_tender: { constitution: 0.4, focus: 0.4, learning: 0.1, cooperation: 0.05, loyalty: 0.05 },
   trader:         { constitution: 0.05, focus: 0.2, learning: 0.1, cooperation: 0.5, loyalty: 0.15 },
   porter:         { constitution: 0.7, focus: 0.1, learning: 0.05, cooperation: 0.1, loyalty: 0.05 },
+  inspector:      { constitution: 0.05, focus: 0.6, learning: 0.3, cooperation: 0.05, loyalty: 0.05 },
 };
 
 /**

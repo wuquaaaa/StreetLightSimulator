@@ -23,6 +23,7 @@ import { TransportSystem } from './TransportSystem';
 import { FinanceSystem } from './FinanceSystem';
 import { WorkerSystem } from './WorkerSystem';
 import { CultivationSystem } from './CultivationSystem';
+import { InspectorSystem } from './InspectorSystem';
 import { getRoleName } from '../data/roles';
 import { getPostInfo } from '../data/posts';
 import { getGongfuInfo } from '../data/gongfu';
@@ -105,6 +106,7 @@ export class GameState {
     this.financeSystem = new FinanceSystem();
     this.workerSystem = new WorkerSystem();
     this.cultivationSystem = new CultivationSystem();
+    this.inspectorSystem = new InspectorSystem();
 
     // 初始化矿脉
     this.miningSystem.init();
@@ -374,6 +376,14 @@ export class GameState {
 
     // 销售
     this.salesSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.financeSystem);
+
+    // 质检员自动检测仓库商品品质
+    if (isNewDay) {
+      const inspector = this.characters.find(c => !c.isRetired && c.hasPost('inspector'));
+      if (inspector) {
+        this.inspectorSystem.autoInspect(this.warehouse, inspector, (msg) => this.addLog(msg));
+      }
+    }
 
     // 运输
     this.transportSystem.tick(isNewDay, this.characters, this.warehouse, (msg) => this.addLog(msg), this.salesSystem);
@@ -693,17 +703,14 @@ export class GameState {
         result = this.transportSystem.startTrip(params.routeId, npcPorter, params.cargo || 'materials', params.amount || 10);
         break;
       }
-      case 'start_cultivation': {
-        const targetChar = this._findCharacter(params.npcId);
-        if (!targetChar) {
-          result = { success: false, message: '找不到该角色' };
+      case 'inspect_batch': {
+        const inspectorChar = this.characters.find(c => !c.isRetired && c.hasPost('inspector'));
+        if (!inspectorChar) {
+          result = { success: false, message: '需要质检员才能检测' };
           break;
         }
-        result = this.cultivationSystem.startCultivation(params.npcId, params.artId, targetChar, this.warehouse);
-        break;
-      }
-      case 'cancel_cultivation': {
-        result = this.cultivationSystem.cancelCultivation(params.npcId);
+        const count = this.inspectorSystem.autoInspect(this.warehouse, inspectorChar, (msg) => this.addLog(msg));
+        result = { success: true, message: `检测了${count}批商品` };
         break;
       }
       case 'mine_ore': {
@@ -1067,6 +1074,7 @@ export class GameState {
     const jobNames = {
       miner: '矿工', smelter: '炼铁匠', herb_prepper: '药童',
       alchemist: '炼丹师', furnace_tender: '炉工', trader: '贩子', porter: '运工',
+      inspector: '质检员',
     };
     this.addLog(`🔓 新岗位解锁: ${jobNames[jobId] || jobId}`);
     this.addNotification(`新岗位解锁: ${jobNames[jobId] || jobId}`);
@@ -1147,6 +1155,10 @@ export class GameState {
     // 运工: 建造后山小径
     if (this.buildings.includes('mountain_trail') && !this.unlockedJobs.has('porter')) {
       this.unlockJob('porter');
+    }
+    // 质检员: 建造仓库
+    if (this.buildings.includes('warehouse') && !this.unlockedJobs.has('inspector')) {
+      this.unlockJob('inspector');
     }
   }
 

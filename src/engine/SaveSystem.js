@@ -18,6 +18,7 @@ import { TransportSystem } from './TransportSystem';
 import { FinanceSystem } from './FinanceSystem';
 import { WorkerSystem } from './WorkerSystem';
 import { CultivationSystem } from './CultivationSystem';
+import { InspectorSystem } from './InspectorSystem';
 
 const SAVE_KEY_PREFIX = 'streetlight_save_';
 const SAVE_SLOTS = 5;
@@ -81,6 +82,7 @@ export const SaveSystem = {
       financeSystem: game.financeSystem.toJSON(),
       workerSystem: game.workerSystem.toJSON(),
       cultivationSystem: game.cultivationSystem.toJSON(),
+      inspectorSystem: game.inspectorSystem.toJSON(),
       // 统计快照
       statsHistory: game.statsHistory || [],
     };
@@ -220,6 +222,9 @@ export const SaveSystem = {
     }
     if (data.cultivationSystem) {
       game.cultivationSystem = CultivationSystem.fromJSON(data.cultivationSystem);
+    }
+    if (data.inspectorSystem) {
+      game.inspectorSystem = InspectorSystem.fromJSON(data.inspectorSystem);
     }
 
     // 统计快照
